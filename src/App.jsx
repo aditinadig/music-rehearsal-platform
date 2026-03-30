@@ -1,17 +1,59 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { AuthProvider } from './context/AuthContext'
+import ProtectedRoute from './components/shared/ProtectedRoute'
+import RoleRedirect from './components/shared/RoleRedirect'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import ManagerDashboard from './pages/ManagerDashboard'
+import SingerDashboard from './pages/SingerDashboard'
+import MusicianDashboard from './pages/MusicianDashboard'
 
-function App() {
-  const [count, setCount] = useState(0)
-
+export default function App() {
   return (
-    <>
-      Hello World
-    </>
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Role based redirect after login */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <RoleRedirect />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected routes */}
+          <Route
+            path="/manager"
+            element={
+              <ProtectedRoute>
+                <ManagerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/singer"
+            element={
+              <ProtectedRoute>
+                <SingerDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/musician"
+            element={
+              <ProtectedRoute>
+                <MusicianDashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
-
-export default App
