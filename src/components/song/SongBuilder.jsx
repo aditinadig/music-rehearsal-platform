@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
+import { useAuth } from '../../context/AuthContext'
 import LineItem from './LineItem'
 
 const SECTIONS = ['Intro', 'Verse 1', 'Verse 2', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro']
 
 export default function SongBuilder({ song }) {
+  const { user } = useAuth()
   const [lines, setLines] = useState([])
   const [sectionLabel, setSectionLabel] = useState('Verse 1')
   const [customSection, setCustomSection] = useState('')
@@ -74,6 +76,49 @@ export default function SongBuilder({ song }) {
     setLyricBlob('')
     setNotationText('')
     setLoading(false)
+  }
+
+  async function writeChangeLog(lineId, changeType, oldValue, newValue, affectedUsers) {
+    const { data: changeData, error } = await supabase
+      .from('change_log')
+      .insert({ line_id: lineId, change_type: changeType, old_value: oldValue, new_value: newValue, changed_by: user.id })
+      .select()
+      .single()
+
+    if (error || !changeData) return
+
+    if (affectedUsers.length > 0) {
+      await supabase.from('acknowledgments').insert(
+        affectedUsers.map(u => ({ change_id: changeData.change_id, user_id: u.user_id, confirmed: false }))
+      )
+    }
+  }
+
+  async function handleEditLine(line, newLyric, newNotation) {
+    const updates = {}
+    if (newLyric !== line.lyric_text) updates.lyric_text = newLyric
+    const newNotationVal = newNotation || null
+    if (newNotationVal !== line.notation_text) updates.notation_text = newNotationVal
+    if (Object.keys(updates).length === 0) return
+
+    await supabase.from('lines').update(updates).eq('line_id', line.line_id)
+
+    // Find all users assigned to this line so they get acknowledgment rows
+    const { data: assigned } = await supabase
+      .from('assignments')
+      .select('user_id')
+      .eq('line_id', line.line_id)
+
+    const affectedUsers = assigned || []
+
+    if (updates.lyric_text !== undefined) {
+      await writeChangeLog(line.line_id, 'lyric_edited', line.lyric_text, newLyric, affectedUsers)
+    }
+    if ('notation_text' in updates) {
+      await writeChangeLog(line.line_id, 'notation_edited', line.notation_text, newNotationVal, affectedUsers)
+    }
+
+    setLines(prev => prev.map(l => l.line_id === line.line_id ? { ...l, ...updates } : l))
   }
 
   // Group lines by section
@@ -179,6 +224,7 @@ export default function SongBuilder({ song }) {
                     key={line.line_id}
                     line={line}
                     lineNumber={line.line_number}
+                    onSave={handleEditLine}
                   />
                 ))}
               </div>

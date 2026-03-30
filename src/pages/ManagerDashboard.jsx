@@ -19,6 +19,8 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('songs')
 
+  const [memberRefresh, setMemberRefresh] = useState(0)
+
   useEffect(() => {
     fetchGroup()
   }, [])
@@ -119,11 +121,10 @@ export default function ManagerDashboard() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition ${
-                    activeTab === tab
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition ${activeTab === tab
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'
+                    }`}
                 >
                   {tab}
                 </button>
@@ -146,11 +147,10 @@ export default function ManagerDashboard() {
                         <button
                           key={song.song_id}
                           onClick={() => setSelectedSong(song)}
-                          className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${
-                            selectedSong?.song_id === song.song_id
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                          }`}
+                          className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${selectedSong?.song_id === song.song_id
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                            }`}
                         >
                           {song.title}
                         </button>
@@ -173,9 +173,13 @@ export default function ManagerDashboard() {
               <div className="space-y-6">
                 <InviteMember
                   groupId={group.group_id}
-                  onMemberAdded={() => {}}
+                  onMemberAdded={() => {
+                    // MemberList will re-fetch via its own key change
+                    setMemberRefresh(prev => prev + 1)
+                  }}
                 />
                 <MemberList
+                  key={memberRefresh}
                   groupId={group.group_id}
                   onMembersLoaded={handleMembersLoaded}
                 />
@@ -197,11 +201,10 @@ export default function ManagerDashboard() {
                           <button
                             key={song.song_id}
                             onClick={() => setSelectedSong(song)}
-                            className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${
-                              selectedSong?.song_id === song.song_id
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                            }`}
+                            className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${selectedSong?.song_id === song.song_id
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                              }`}
                           >
                             {song.title}
                           </button>
@@ -213,7 +216,7 @@ export default function ManagerDashboard() {
                       <AssignmentPanel
                         lines={lines}
                         members={members}
-                        onAssignmentSaved={() => {}}
+                        onAssignmentSaved={() => { }}
                       />
                     )}
 
@@ -236,12 +239,32 @@ export default function ManagerDashboard() {
             {/* Status tab */}
             {activeTab === 'status' && (
               <div className="space-y-6">
-                {selectedSong ? (
-                  <AcknowledgmentStatus songId={selectedSong.song_id} />
+                {songs.length === 0 ? (
+                  <p className="text-sm text-gray-400">Create a song first.</p>
                 ) : (
-                  <p className="text-sm text-gray-400">
-                    Select a song from the Songs tab first.
-                  </p>
+                  <>
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                      <h2 className="text-lg font-semibold text-gray-800 mb-4">Select Song</h2>
+                      <div className="space-y-2">
+                        {songs.map(song => (
+                          <button
+                            key={song.song_id}
+                            onClick={() => setSelectedSong(song)}
+                            className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${selectedSong?.song_id === song.song_id
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                              }`}
+                          >
+                            {song.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedSong && (
+                      <AcknowledgmentStatus songId={selectedSong.song_id} />
+                    )}
+                  </>
                 )}
               </div>
             )}

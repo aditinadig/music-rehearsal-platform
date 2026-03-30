@@ -12,21 +12,32 @@ export default function MemberList({ groupId, onMembersLoaded }) {
   async function fetchMembers() {
     setLoading(true)
 
-    const { data, error } = await supabase
+    // Fetch group_members first
+    const { data: memberData, error: memberError } = await supabase
       .from('group_members')
-      .select('user_id, users(name, role)')
+      .select('user_id')
       .eq('group_id', groupId)
 
-    if (!error) {
-      const formatted = data.map(m => ({
-        user_id: m.user_id,
-        name: m.users.name,
-        role: m.users.role
-      }))
-      setMembers(formatted)
-      if (onMembersLoaded) onMembersLoaded(formatted)
+    if (memberError || !memberData) {
+      setLoading(false)
+      return
     }
 
+    // Fetch each user's profile separately
+    const userIds = memberData.map(m => m.user_id)
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('user_id, name, role')
+      .in('user_id', userIds)
+
+    if (userError || !userData) {
+      setLoading(false)
+      return
+    }
+
+    setMembers(userData)
+    if (onMembersLoaded) onMembersLoaded(userData)
     setLoading(false)
   }
 
@@ -36,7 +47,11 @@ export default function MemberList({ groupId, onMembersLoaded }) {
     manager: 'bg-indigo-100 text-indigo-600'
   }
 
-  if (loading) return <p className="text-sm text-gray-400">Loading members...</p>
+  if (loading) return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <p className="text-sm text-gray-400">Loading members...</p>
+    </div>
+  )
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">

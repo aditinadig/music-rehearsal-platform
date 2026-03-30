@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 
@@ -10,6 +10,35 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [assignments, setAssignments] = useState([])
+  const [cues, setCues] = useState([])
+  const formRef = useRef(null)
+
+  useEffect(() => {
+    if (lines.length > 0) fetchAssignments()
+  }, [lines])
+
+  async function fetchAssignments() {
+    const lineIds = lines.map(l => l.line_id)
+
+    const [{ data: assignData }, { data: cueData }] = await Promise.all([
+      supabase.from('assignments').select('*').in('line_id', lineIds),
+      supabase.from('cues').select('*').in('line_id', lineIds)
+    ])
+
+    if (assignData) setAssignments(assignData)
+    if (cueData) setCues(cueData)
+  }
+
+  async function handleEditClick(assignment) {
+    setSelectedLine(assignment.line_id)
+    setSelectedMember(assignment.user_id)
+    const existingCue = cues.find(c => c.line_id === assignment.line_id && c.user_id === assignment.user_id)
+    setCueText(existingCue?.cue_text || '')
+    setSuccess('')
+    setError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   async function handleSave() {
     if (!selectedLine || !selectedMember) return
@@ -103,6 +132,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
     setSuccess('Assignment saved!')
     setCueText('')
     setLoading(false)
+    fetchAssignments()
     if (onAssignmentSaved) onAssignmentSaved()
   }
 
@@ -144,7 +174,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-1">Assign Lines & Set Cues</h2>
+      <h2 className="text-lg font-semibold text-gray-800 mb-1" ref={formRef}>Assign Lines & Set Cues</h2>
       <p className="text-sm text-gray-400 mb-6">
         Pick a line, assign it to a performer, and optionally set an entry cue for them.
       </p>
@@ -222,6 +252,48 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
           {loading ? 'Saving...' : 'Save Assignment'}
         </button>
       </div>
+
+      {/* Current assignments list */}
+      {assignments.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Current Assignments</h3>
+          <div className="space-y-2">
+            {assignments.map(a => {
+              const line = lines.find(l => l.line_id === a.line_id)
+              const member = members.find(m => m.user_id === a.user_id)
+              const cue = cues.find(c => c.line_id === a.line_id && c.user_id === a.user_id)
+              if (!line || !member) return null
+              return (
+                <div key={a.assignment_id} className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-indigo-500 font-medium mb-0.5">{line.section_label}</p>
+                      <p className="text-gray-800 truncate">{line.lyric_text}</p>
+                      {cue && (
+                        <p className="text-xs text-gray-400 mt-1">Cue: {cue.cue_text}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0 space-y-1">
+                      <p className="text-gray-700 font-medium">{member.name}</p>
+                      <p className="text-xs text-gray-400 capitalize">{member.role}</p>
+                      <button
+                        onClick={() => handleEditClick(a)}
+                        className="text-xs text-indigo-500 hover:underline block ml-auto"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {assignments.length === 0 && lines.length > 0 && (
+        <p className="text-xs text-gray-400 mt-6">No assignments yet for this song.</p>
+      )}
     </div>
   )
 }
