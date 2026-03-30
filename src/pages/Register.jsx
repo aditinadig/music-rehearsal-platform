@@ -42,6 +42,14 @@ export default function Register() {
       return
     }
 
+    // Sign in after insert so AuthContext re-fetches the profile (now it exists)
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInError) {
+      setError(signInError.message)
+      setLoading(false)
+      return
+    }
+
     setLoading(false)
     navigate('/')
   }
