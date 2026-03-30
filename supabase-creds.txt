@@ -1,6 +1,0 @@
-Project URL: https://dusjunnyjzbwwfzrdkmo.supabase.co
-Publishable Key: sb_publishable_VYmKJD40uNhsPskTXQTmpA_OmodsPod
-Anon Key (Legacy): eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1c2p1bm55anpid3dmenJka21vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MzYzODksImV4cCI6MjA5MDIxMjM4OX0.V3VsulCc0fcRri78TlwfLjfNZ9rwaWjVcdgE3ez1Q4c
-
-postgresql://postgres:[YOUR-PASSWORD]@db.dusjunnyjzbwwfzrdkmo.supabase.co:5432/postgres
-
