@@ -8,6 +8,7 @@ const SECTIONS = ['Intro', 'Verse 1', 'Verse 2', 'Pre-Chorus', 'Chorus', 'Bridge
 export default function SongBuilder({ song }) {
   const { user } = useAuth()
   const [lines, setLines] = useState([])
+  const [wordNotes, setWordNotes] = useState({}) // { [lineId]: { [wordIndex]: noteText } }
   const [sectionLabel, setSectionLabel] = useState('Verse 1')
   const [customSection, setCustomSection] = useState('')
   const [lyricBlob, setLyricBlob] = useState('')
@@ -28,8 +29,52 @@ export default function SongBuilder({ song }) {
       .eq('song_id', song.song_id)
       .order('line_number', { ascending: true })
 
-    if (!error) setLines(data)
+    if (!error && data) {
+      setLines(data)
+      await fetchWordNotes(data.map(l => l.line_id))
+    }
     setFetching(false)
+  }
+
+  async function fetchWordNotes(lineIds) {
+    if (!lineIds.length) return
+    const { data } = await supabase
+      .from('word_notes')
+      .select('line_id, word_index, note_text')
+      .in('line_id', lineIds)
+
+    if (!data) return
+    const map = {}
+    for (const row of data) {
+      if (!map[row.line_id]) map[row.line_id] = {}
+      map[row.line_id][row.word_index] = row.note_text
+    }
+    setWordNotes(map)
+  }
+
+  async function handleNoteChange(lineId, wordIndex, noteText) {
+    // Always delete existing note for this word first
+    await supabase
+      .from('word_notes')
+      .delete()
+      .eq('line_id', lineId)
+      .eq('word_index', wordIndex)
+
+    if (noteText) {
+      await supabase.from('word_notes').insert({
+        line_id: lineId,
+        word_index: wordIndex,
+        note_text: noteText,
+        created_by: user.id
+      })
+    }
+
+    setWordNotes(prev => {
+      const lineNotes = { ...(prev[lineId] || {}) }
+      if (noteText) lineNotes[wordIndex] = noteText
+      else delete lineNotes[wordIndex]
+      return { ...prev, [lineId]: lineNotes }
+    })
   }
 
   async function handleAddSection() {
@@ -225,6 +270,8 @@ export default function SongBuilder({ song }) {
                     line={line}
                     lineNumber={line.line_number}
                     onSave={handleEditLine}
+                    wordNotes={wordNotes[line.line_id] || {}}
+                    onNoteChange={(wordIndex, noteText) => handleNoteChange(line.line_id, wordIndex, noteText)}
                   />
                 ))}
               </div>

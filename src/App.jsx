@@ -31,7 +31,7 @@ export default function App() {
           <Route
             path="/manager"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['manager']}>
                 <ManagerDashboard />
               </ProtectedRoute>
             }
@@ -39,7 +39,7 @@ export default function App() {
           <Route
             path="/singer"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['singer']}>
                 <SingerDashboard />
               </ProtectedRoute>
             }
@@ -47,7 +47,7 @@ export default function App() {
           <Route
             path="/musician"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={['musician']}>
                 <MusicianDashboard />
               </ProtectedRoute>
             }
