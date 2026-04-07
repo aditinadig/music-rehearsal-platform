@@ -45,98 +45,232 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
     setLoading(true)
     setError('')
     setSuccess('')
+    let snapshotAssignments = []
+    let snapshotCues = []
 
-    // Check if assignment already exists for this line and user
-    const { data: existing } = await supabase
-      .from('assignments')
-      .select('assignment_id')
-      .eq('line_id', selectedLine)
-      .eq('user_id', selectedMember)
-      .single()
-
-    if (existing) {
-      // Update existing assignment - just update the change log
+    try {
       const line = lines.find(l => l.line_id === selectedLine)
       const member = members.find(m => m.user_id === selectedMember)
 
-      await writeChangeLog(
-        selectedLine,
-        'assignment_changed',
-        null,
-        `${member.name} assigned to: "${line.lyric_text}"`,
-        selectedMember
-      )
-    } else {
-      // Create new assignment
-      const { error: assignError } = await supabase
-        .from('assignments')
-        .insert({
-          line_id: selectedLine,
-          user_id: selectedMember,
-          assigned_by: user.id
-        })
+      const [{ data: existingAssignments, error: assignmentFetchError }, { data: existingCues, error: cueFetchError }] = await Promise.all([
+        supabase
+          .from('assignments')
+          .select('assignment_id, user_id')
+          .eq('line_id', selectedLine),
+        supabase
+          .from('cues')
+          .select('cue_id, user_id, cue_text')
+          .eq('line_id', selectedLine)
+      ])
 
-      if (assignError) {
-        setError(assignError.message)
-        setLoading(false)
-        return
+      if (assignmentFetchError || cueFetchError) {
+        throw new Error(assignmentFetchError?.message || cueFetchError?.message || 'Unable to load current assignment state.')
       }
 
-      const line = lines.find(l => l.line_id === selectedLine)
-      const member = members.find(m => m.user_id === selectedMember)
+      const currentAssignments = existingAssignments || []
+      const currentCues = existingCues || []
+      const currentAssigneeIds = currentAssignments.map(a => a.user_id)
+      const currentCueUserIds = currentCues.map(c => c.user_id)
+      const affectedUserIds = [...new Set([...currentAssigneeIds, ...currentCueUserIds, selectedMember])]
+      snapshotAssignments = currentAssignments.map(a => ({ ...a }))
+      snapshotCues = currentCues.map(c => ({ ...c }))
 
-      await writeChangeLog(
-        selectedLine,
-        'assignment_changed',
-        null,
-        `${member.name} assigned to: "${line.lyric_text}"`,
-        selectedMember
-      )
-    }
+      const previousAssigneeNames = members
+        .filter(m => currentAssigneeIds.includes(m.user_id))
+        .map(m => m.name)
+        .join(', ') || 'Unassigned'
 
-    // Save cue if provided
-    if (cueText.trim()) {
-      const { data: existingCue } = await supabase
-        .from('cues')
-        .select('cue_id')
-        .eq('line_id', selectedLine)
-        .eq('user_id', selectedMember)
-        .single()
+      const selectedAssignment = currentAssignments.find(a => a.user_id === selectedMember)
+      const assignmentsToRemove = currentAssignments.filter(a => a.user_id !== selectedMember)
 
-      if (existingCue) {
-        await supabase
-          .from('cues')
-          .update({ cue_text: cueText, updated_at: new Date() })
-          .eq('cue_id', existingCue.cue_id)
-      } else {
-        await supabase
-          .from('cues')
+      if (assignmentsToRemove.length > 0) {
+        const { error: deleteAssignmentsError } = await supabase
+          .from('assignments')
+          .delete()
+          .in('assignment_id', assignmentsToRemove.map(a => a.assignment_id))
+
+        if (deleteAssignmentsError) {
+          throw new Error(deleteAssignmentsError.message)
+        }
+      }
+
+      if (!selectedAssignment) {
+        const { error: assignError } = await supabase
+          .from('assignments')
           .insert({
             line_id: selectedLine,
             user_id: selectedMember,
-            cue_text: cueText,
-            created_by: user.id
+            assigned_by: user.id
           })
+
+        if (assignError) {
+          throw new Error(assignError.message)
+        }
       }
 
-      const line = lines.find(l => l.line_id === selectedLine)
-      await writeChangeLog(
-        selectedLine,
-        'cue_changed',
-        null,
-        cueText,
-        selectedMember
-      )
-    }
+      const assignmentChanged =
+        currentAssigneeIds.length !== 1 ||
+        currentAssigneeIds[0] !== selectedMember
 
-    setSuccess('Assignment saved!')
-    setCueText('')
-    setLoading(false)
-    fetchAssignments()
-    if (onAssignmentSaved) onAssignmentSaved()
+      const existingCueForSelectedMember = currentCues.find(c => c.user_id === selectedMember)
+      const otherCueIds = currentCues
+        .filter(c => c.user_id !== selectedMember)
+        .map(c => c.cue_id)
+
+      if (otherCueIds.length > 0) {
+        const { error: deleteOtherCuesError } = await supabase
+          .from('cues')
+          .delete()
+          .in('cue_id', otherCueIds)
+
+        if (deleteOtherCuesError) {
+          throw new Error(deleteOtherCuesError.message)
+        }
+      }
+
+      const trimmedCue = cueText.trim()
+      const previousCueValue = existingCueForSelectedMember?.cue_text || currentCues[0]?.cue_text || null
+      const cueChanged = (previousCueValue || '') !== trimmedCue
+
+      if (assignmentChanged) {
+        await writeChangeLog(
+          selectedLine,
+          'assignment_changed',
+          previousAssigneeNames,
+          member ? `${member.name} assigned to: "${line?.lyric_text}"` : `Assigned to user ${selectedMember}`,
+          affectedUserIds
+        )
+      }
+
+      if (trimmedCue) {
+        if (existingCueForSelectedMember) {
+          const { error: updateCueError } = await supabase
+            .from('cues')
+            .update({ cue_text: trimmedCue, updated_at: new Date().toISOString() })
+            .eq('cue_id', existingCueForSelectedMember.cue_id)
+
+          if (updateCueError) {
+            throw new Error(updateCueError.message)
+          }
+        } else {
+          const { error: insertCueError } = await supabase
+            .from('cues')
+            .insert({
+              line_id: selectedLine,
+              user_id: selectedMember,
+              cue_text: trimmedCue,
+              created_by: user.id
+            })
+
+          if (insertCueError) {
+            throw new Error(insertCueError.message)
+          }
+        }
+      } else if (existingCueForSelectedMember) {
+        const { error: deleteCueError } = await supabase
+          .from('cues')
+          .delete()
+          .eq('cue_id', existingCueForSelectedMember.cue_id)
+
+        if (deleteCueError) {
+          throw new Error(deleteCueError.message)
+        }
+      }
+
+      if (cueChanged) {
+        await writeChangeLog(
+          selectedLine,
+          'cue_changed',
+          previousCueValue,
+          trimmedCue || 'Cue cleared',
+          affectedUserIds
+        )
+      }
+
+      setSuccess('Assignment saved!')
+      setSelectedLine('')
+      setSelectedMember('')
+      setCueText('')
+      fetchAssignments()
+      if (onAssignmentSaved) onAssignmentSaved()
+    } catch (saveError) {
+      await rollbackAssignmentState(selectedLine, snapshotAssignments, snapshotCues)
+      console.error('Assignment save failed:', saveError)
+      setError(saveError.message || 'Unable to save assignment changes.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  async function writeChangeLog(lineId, changeType, oldValue, newValue, affectedUserId) {
+  async function rollbackAssignmentState(lineId, originalAssignments, originalCues) {
+    try {
+      const [{ data: currentAssignments }, { data: currentCues }] = await Promise.all([
+        supabase.from('assignments').select('assignment_id, user_id').eq('line_id', lineId),
+        supabase.from('cues').select('cue_id, user_id, cue_text, created_by').eq('line_id', lineId),
+      ])
+
+      if ((currentAssignments || []).length > 0) {
+        const { error: deleteAssignmentsError } = await supabase
+          .from('assignments')
+          .delete()
+          .in('assignment_id', currentAssignments.map(a => a.assignment_id))
+
+        if (deleteAssignmentsError) {
+          console.error('Assignment rollback delete failed:', deleteAssignmentsError)
+        }
+      }
+
+      if ((currentCues || []).length > 0) {
+        const { error: deleteCuesError } = await supabase
+          .from('cues')
+          .delete()
+          .in('cue_id', currentCues.map(c => c.cue_id))
+
+        if (deleteCuesError) {
+          console.error('Cue rollback delete failed:', deleteCuesError)
+        }
+      }
+
+      if ((originalAssignments || []).length > 0) {
+        const { error: restoreAssignmentsError } = await supabase
+          .from('assignments')
+          .insert(
+            originalAssignments.map(assignment => ({
+              line_id: lineId,
+              user_id: assignment.user_id,
+              assigned_by: user.id
+            }))
+          )
+
+        if (restoreAssignmentsError) {
+          console.error('Assignment rollback restore failed:', restoreAssignmentsError)
+        }
+      }
+
+      if ((originalCues || []).length > 0) {
+        const { error: restoreCuesError } = await supabase
+          .from('cues')
+          .insert(
+            originalCues.map(cue => ({
+              line_id: lineId,
+              user_id: cue.user_id,
+              cue_text: cue.cue_text,
+              created_by: cue.created_by || user.id
+            }))
+          )
+
+        if (restoreCuesError) {
+          console.error('Cue rollback restore failed:', restoreCuesError)
+        }
+      }
+    } catch (rollbackError) {
+      console.error('Rollback failed:', { lineId, rollbackError })
+    } finally {
+      fetchAssignments()
+    }
+  }
+
+  async function writeChangeLog(lineId, changeType, oldValue, newValue, affectedUserIds) {
     // Insert into change_log
     const { data: changeData, error: changeError } = await supabase
       .from('change_log')
@@ -150,16 +284,39 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       .select()
       .single()
 
-    if (changeError || !changeData) return
-
-    // Create acknowledgment row for the affected user
-    await supabase
-      .from('acknowledgments')
-      .insert({
-        change_id: changeData.change_id,
-        user_id: affectedUserId,
-        confirmed: false
+    if (changeError || !changeData) {
+      console.error('change_log insert failed:', {
+        lineId,
+        changeType,
+        oldValue,
+        newValue,
+        userId: user.id,
+        changeError,
       })
+      throw new Error(changeError?.message || `Failed to write ${changeType} to change_log.`)
+    }
+
+    if (!affectedUserIds.length) return
+
+    // Create acknowledgment rows for all affected users
+    const { error: ackError } = await supabase
+      .from('acknowledgments')
+      .insert(
+        affectedUserIds.map(affectedUserId => ({
+          change_id: changeData.change_id,
+          user_id: affectedUserId,
+          confirmed: false
+        }))
+      )
+
+    if (ackError) {
+      console.error('acknowledgments insert failed:', {
+        changeId: changeData.change_id,
+        affectedUserIds,
+        ackError,
+      })
+      throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
+    }
   }
 
   // Group lines by section for the dropdown

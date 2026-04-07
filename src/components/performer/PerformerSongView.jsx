@@ -5,8 +5,18 @@ import { useAuth } from '../../context/AuthContext'
 const CHANGE_LABELS = {
   assignment_changed: 'Assignment changed',
   cue_changed: 'Cue updated',
-  lyric_edited: 'Lyric edited',
-  notation_edited: 'Notation edited',
+  lyric_edited: 'Lyric updated',
+  note_edited: 'Notes updated',
+}
+
+function renderChangeSummary(change) {
+  if (!change?.new_value) return null
+
+  if (change.old_value) {
+    return `${change.old_value} -> ${change.new_value}`
+  }
+
+  return change.new_value
 }
 
 export default function PerformerSongView({ showNotation = false }) {
@@ -17,8 +27,10 @@ export default function PerformerSongView({ showNotation = false }) {
   const [lines, setLines] = useState([])
   const [assignedLineIds, setAssignedLineIds] = useState(new Set())
   const [cueMap, setCueMap] = useState({})
-  const [wordNotesMap, setWordNotesMap] = useState({}) // { [lineId]: { [wordIndex]: noteText } }
+  const [wordNotesMap, setWordNotesMap] = useState({})
   const [pendingAcks, setPendingAcks] = useState([])
+  const [recentUpdates, setRecentUpdates] = useState([])
+  const [liveNotifications, setLiveNotifications] = useState([])
   const [collapsedSections, setCollapsedSections] = useState(new Set())
   const [fontSize, setFontSize] = useState('base')
   const [confirmingId, setConfirmingId] = useState(null)
@@ -28,8 +40,61 @@ export default function PerformerSongView({ showNotation = false }) {
   }, [])
 
   useEffect(() => {
-    if (selectedSong) fetchSongData(selectedSong.song_id)
+    if (selectedSong) {
+      fetchSongData(selectedSong.song_id)
+      fetchRecentUpdates(selectedSong.song_id)
+    }
   }, [selectedSong])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const channel = supabase
+      .channel(`performer-updates-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'acknowledgments',
+          filter: `user_id=eq.${user.id}`,
+        },
+        async payload => {
+          const ackId = payload.new?.ack_id || payload.old?.ack_id
+          const changeWasConfirmed = payload.new?.confirmed === true
+
+          await refreshPerformerUpdates(ackId, changeWasConfirmed)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, selectedSong?.song_id])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const intervalId = window.setInterval(() => {
+      refreshPerformerUpdates()
+    }, 2000)
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        refreshPerformerUpdates()
+      }
+    }
+
+    window.addEventListener('focus', refreshPerformerUpdates)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshPerformerUpdates)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user?.id, selectedSong?.song_id])
 
   async function init() {
     setLoading(true)
@@ -68,9 +133,10 @@ export default function PerformerSongView({ showNotation = false }) {
       .order('line_number', { ascending: true })
 
     if (!lineData) return
+
     setLines(lineData)
 
-    const lineIds = lineData.map(l => l.line_id)
+    const lineIds = lineData.map(line => line.line_id)
 
     const [{ data: assignData }, { data: cueData }, { data: noteData }] = await Promise.all([
       supabase.from('assignments').select('line_id').eq('user_id', user.id).in('line_id', lineIds),
@@ -78,11 +144,11 @@ export default function PerformerSongView({ showNotation = false }) {
       supabase.from('word_notes').select('line_id, word_index, note_text').in('line_id', lineIds),
     ])
 
-    setAssignedLineIds(new Set((assignData || []).map(a => a.line_id)))
-    setCueMap(Object.fromEntries((cueData || []).map(c => [c.line_id, c.cue_text])))
+    setAssignedLineIds(new Set((assignData || []).map(assignment => assignment.line_id)))
+    setCueMap(Object.fromEntries((cueData || []).map(cue => [cue.line_id, cue.cue_text])))
 
     const notesMap = {}
-    for (const row of (noteData || [])) {
+    for (const row of noteData || []) {
       if (!notesMap[row.line_id]) notesMap[row.line_id] = {}
       notesMap[row.line_id][row.word_index] = row.note_text
     }
@@ -94,19 +160,112 @@ export default function PerformerSongView({ showNotation = false }) {
       .from('acknowledgments')
       .select(`
         ack_id,
+        confirmed,
         change_log (
           change_id,
           change_type,
+          old_value,
           new_value,
           changed_at,
           line_id,
-          lines ( lyric_text, section_label )
+          lines ( lyric_text, section_label, song_id )
         )
       `)
       .eq('user_id', user.id)
       .eq('confirmed', false)
+      .order('ack_id', { ascending: false })
 
     setPendingAcks(data || [])
+    return data || []
+  }
+
+  async function fetchRecentUpdates(songId) {
+    const { data } = await supabase
+      .from('acknowledgments')
+      .select(`
+        ack_id,
+        confirmed,
+        confirmed_at,
+        change_log (
+          change_id,
+          change_type,
+          old_value,
+          new_value,
+          changed_at,
+          line_id,
+          lines ( lyric_text, section_label, song_id )
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('confirmed_at', { ascending: false, nullsFirst: false })
+      .limit(8)
+
+    setRecentUpdates((data || []).filter(ack => ack.change_log?.lines?.song_id === songId))
+  }
+
+  async function fetchAckById(ackId) {
+    const { data } = await supabase
+      .from('acknowledgments')
+      .select(`
+        ack_id,
+        confirmed,
+        confirmed_at,
+        change_log (
+          change_id,
+          change_type,
+          old_value,
+          new_value,
+          changed_at,
+          line_id,
+          lines ( lyric_text, section_label, song_id )
+        )
+      `)
+      .eq('ack_id', ackId)
+      .single()
+
+    return data || null
+  }
+
+  async function refreshPerformerUpdates(ackId = null, changeWasConfirmed = false) {
+    const ack = ackId ? await fetchAckById(ackId) : null
+    const changedSongId = ack?.change_log?.lines?.song_id
+    const changedLineId = ack?.change_log?.line_id
+
+    const latestPendingAcks = await fetchPendingAcks()
+
+    if (selectedSong?.song_id) {
+      await fetchRecentUpdates(selectedSong.song_id)
+    }
+
+    const shouldRefreshSong =
+      selectedSong?.song_id &&
+      (
+        changedSongId === selectedSong.song_id ||
+        lines.some(line => line.line_id === changedLineId)
+      )
+
+    if (shouldRefreshSong) {
+      await fetchSongData(selectedSong.song_id)
+    }
+
+    if (ack && !changeWasConfirmed && !ack.confirmed) {
+      setLiveNotifications(prev => {
+        const withoutCurrent = prev.filter(item => item.ack_id !== ack.ack_id)
+        return [ack, ...withoutCurrent].slice(0, 5)
+      })
+    }
+
+    if (!ack) {
+      setLiveNotifications(prev => {
+        const knownIds = new Set(prev.map(item => item.ack_id))
+        const incoming = latestPendingAcks.filter(item => !knownIds.has(item.ack_id))
+        return [...incoming, ...prev].slice(0, 5)
+      })
+    }
+
+    if (changeWasConfirmed) {
+      setLiveNotifications(prev => prev.filter(item => item.ack_id !== ackId))
+    }
   }
 
   async function confirmAck(ackId) {
@@ -115,8 +274,17 @@ export default function PerformerSongView({ showNotation = false }) {
       .from('acknowledgments')
       .update({ confirmed: true, confirmed_at: new Date().toISOString() })
       .eq('ack_id', ackId)
-    setPendingAcks(prev => prev.filter(a => a.ack_id !== ackId))
+
+    await fetchPendingAcks()
+    if (selectedSong) {
+      await fetchRecentUpdates(selectedSong.song_id)
+    }
+    setLiveNotifications(prev => prev.filter(item => item.ack_id !== ackId))
     setConfirmingId(null)
+  }
+
+  function dismissLiveNotification(ackId) {
+    setLiveNotifications(prev => prev.filter(item => item.ack_id !== ackId))
   }
 
   function toggleSection(label) {
@@ -128,9 +296,9 @@ export default function PerformerSongView({ showNotation = false }) {
   }
 
   const sections = lines.reduce((acc, line) => {
-    const s = line.section_label || 'General'
-    if (!acc[s]) acc[s] = []
-    acc[s].push(line)
+    const section = line.section_label || 'General'
+    if (!acc[section]) acc[section] = []
+    acc[section].push(line)
     return acc
   }, {})
 
@@ -150,33 +318,30 @@ export default function PerformerSongView({ showNotation = false }) {
 
   return (
     <div className="space-y-6">
-
-      {/* Pending acknowledgments */}
-      {pendingAcks.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
-          <h2 className="text-sm font-semibold text-amber-800 mb-3">
-            {pendingAcks.length} update{pendingAcks.length > 1 ? 's' : ''} need your acknowledgment
+      {liveNotifications.length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5">
+          <h2 className="text-sm font-semibold text-indigo-800 mb-3">
+            New update{liveNotifications.length > 1 ? 's' : ''} just came in
           </h2>
           <div className="space-y-2">
-            {pendingAcks.map(ack => {
-              const cl = ack.change_log
+            {liveNotifications.map(ack => {
+              const change = ack.change_log
               return (
-                <div key={ack.ack_id} className="bg-white rounded-xl px-4 py-3 flex items-start justify-between gap-4 shadow-sm">
+                <div key={ack.ack_id} className="bg-white rounded-xl px-4 py-3 flex items-start justify-between gap-4 shadow-sm border border-indigo-100">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-amber-600 mb-0.5">
-                      {CHANGE_LABELS[cl?.change_type] || cl?.change_type}
+                    <p className="text-xs font-medium text-indigo-600 mb-0.5">
+                      {CHANGE_LABELS[change?.change_type] || change?.change_type}
                     </p>
-                    <p className="text-sm text-gray-700 truncate">"{cl?.lines?.lyric_text}"</p>
-                    {cl?.new_value && (
-                      <p className="text-xs text-gray-500 mt-0.5">{cl.new_value}</p>
+                    <p className="text-sm text-gray-700 truncate">"{change?.lines?.lyric_text}"</p>
+                    {renderChangeSummary(change) && (
+                      <p className="text-xs text-gray-500 mt-0.5">{renderChangeSummary(change)}</p>
                     )}
                   </div>
                   <button
-                    onClick={() => confirmAck(ack.ack_id)}
-                    disabled={confirmingId === ack.ack_id}
-                    className="shrink-0 bg-amber-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-amber-600 transition disabled:opacity-50"
+                    onClick={() => dismissLiveNotification(ack.ack_id)}
+                    className="shrink-0 text-xs text-indigo-500 hover:underline"
                   >
-                    {confirmingId === ack.ack_id ? 'Saving...' : 'Got it'}
+                    Dismiss
                   </button>
                 </div>
               )
@@ -185,7 +350,74 @@ export default function PerformerSongView({ showNotation = false }) {
         </div>
       )}
 
-      {/* Song picker + font size controls */}
+      {pendingAcks.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+          <h2 className="text-sm font-semibold text-amber-800 mb-3">
+            Updates for you
+          </h2>
+          <div className="space-y-2">
+            {pendingAcks.map(ack => {
+              const change = ack.change_log
+              return (
+                <div key={ack.ack_id} className="bg-white rounded-xl px-4 py-3 flex items-start justify-between gap-4 shadow-sm">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-amber-600 mb-0.5">
+                      {CHANGE_LABELS[change?.change_type] || change?.change_type}
+                    </p>
+                    <p className="text-sm text-gray-700 truncate">"{change?.lines?.lyric_text}"</p>
+                    {renderChangeSummary(change) && (
+                      <p className="text-xs text-gray-500 mt-0.5">{renderChangeSummary(change)}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => confirmAck(ack.ack_id)}
+                    disabled={confirmingId === ack.ack_id}
+                    className="shrink-0 bg-amber-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-amber-600 transition disabled:opacity-50"
+                  >
+                    {confirmingId === ack.ack_id ? 'Saving...' : 'Confirm'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {recentUpdates.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <h2 className="text-sm font-semibold text-gray-800 mb-3">Recent Updates</h2>
+          <div className="space-y-2">
+            {recentUpdates.map(ack => {
+              const change = ack.change_log
+              return (
+                <div key={ack.ack_id} className="rounded-xl border border-gray-100 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-indigo-600 mb-0.5">
+                        {CHANGE_LABELS[change?.change_type] || change?.change_type}
+                      </p>
+                      <p className="text-sm text-gray-700 truncate">"{change?.lines?.lyric_text}"</p>
+                      {renderChangeSummary(change) && (
+                        <p className="text-xs text-gray-500 mt-0.5">{renderChangeSummary(change)}</p>
+                      )}
+                    </div>
+                    <span
+                      className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${
+                        ack.confirmed
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-yellow-100 text-yellow-600'
+                      }`}
+                    >
+                      {ack.confirmed ? 'Confirmed' : 'Pending'}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-2 flex-1 flex-wrap">
           {songs.map(song => (
@@ -203,7 +435,6 @@ export default function PerformerSongView({ showNotation = false }) {
           ))}
         </div>
 
-        {/* Font size toggle */}
         <div className="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg p-1">
           {[
             { key: 'sm', label: 'S' },
@@ -225,18 +456,16 @@ export default function PerformerSongView({ showNotation = false }) {
         </div>
       </div>
 
-      {/* Lines by section */}
       {selectedSong && Object.keys(sections).length === 0 && (
         <p className="text-sm text-gray-400">This song has no lines yet.</p>
       )}
 
       {Object.entries(sections).map(([sectionLabel, sectionLines]) => {
         const isCollapsed = collapsedSections.has(sectionLabel)
-        const hasMyLines = sectionLines.some(l => assignedLineIds.has(l.line_id))
+        const hasMyLines = sectionLines.some(line => assignedLineIds.has(line.line_id))
 
         return (
           <div key={sectionLabel} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            {/* Section header */}
             <button
               onClick={() => toggleSection(sectionLabel)}
               className="w-full flex items-center justify-between px-5 py-3 bg-gray-50 border-b border-gray-100 hover:bg-gray-100 transition"
@@ -251,10 +480,9 @@ export default function PerformerSongView({ showNotation = false }) {
                   </span>
                 )}
               </div>
-              <span className="text-gray-400 text-xs">{isCollapsed ? '▸' : '▾'}</span>
+              <span className="text-gray-400 text-xs">{isCollapsed ? 'Closed' : 'Open'}</span>
             </button>
 
-            {/* Lines */}
             {!isCollapsed && (
               <div className="divide-y divide-gray-50">
                 {sectionLines.map(line => {
@@ -267,14 +495,13 @@ export default function PerformerSongView({ showNotation = false }) {
                       className={`px-5 py-3 ${isAssigned ? 'bg-indigo-50 border-l-4 border-indigo-400' : ''}`}
                     >
                       {showNotation ? (
-                        /* Musician: word-by-word with notes above */
                         <div className="flex flex-wrap items-end gap-x-1.5 gap-y-3">
-                          {line.lyric_text.split(' ').map((word, i) => {
-                            const note = wordNotesMap[line.line_id]?.[i]
+                          {line.lyric_text.split(' ').map((word, index) => {
+                            const note = wordNotesMap[line.line_id]?.[index]
                             return (
-                              <span key={i} className="flex flex-col items-center">
+                              <span key={index} className="flex flex-col items-center">
                                 <span className={`text-xs font-mono font-semibold text-teal-600 mb-0.5 ${note ? '' : 'opacity-0 select-none pointer-events-none'}`}>
-                                  {note || '·'}
+                                  {note || '.'}
                                 </span>
                                 <span className={`${fontSizeClass} ${isAssigned ? 'text-indigo-900 font-semibold' : 'text-gray-700'}`}>
                                   {word}
@@ -284,16 +511,17 @@ export default function PerformerSongView({ showNotation = false }) {
                           })}
                         </div>
                       ) : (
-                        /* Singer: plain line */
-                        <p className={`${fontSizeClass} ${isAssigned ? 'text-indigo-900 font-semibold' : 'text-gray-700'}`}>
+                        <p className={`${fontSizeClass} ${isAssigned ? 'text-gray-900 font-semibold' : 'text-gray-400'}`}>
                           {line.lyric_text}
                         </p>
                       )}
+
                       {showNotation && line.notation_text && (
                         <p className={`${fontSizeClass} text-teal-500 mt-1 font-mono`}>
                           {line.notation_text}
                         </p>
                       )}
+
                       {isAssigned && cue && (
                         <p className="text-xs text-indigo-500 mt-1.5">
                           <span className="font-semibold">Cue:</span> {cue}

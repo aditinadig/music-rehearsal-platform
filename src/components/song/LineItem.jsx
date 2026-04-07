@@ -19,9 +19,12 @@ export default function LineItem({ line, lineNumber, onSave, wordNotes, onNoteCh
   async function handleSave() {
     if (!lyric.trim()) return
     setSaving(true)
-    await onSave(line, lyric.trim(), notation.trim())
-    setSaving(false)
-    setEditing(false)
+    try {
+      await onSave(line, lyric.trim(), notation.trim())
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handleWordClick(i, note) {
@@ -36,19 +39,25 @@ export default function LineItem({ line, lineNumber, onSave, wordNotes, onNoteCh
   async function handleNoteSave() {
     if (!onNoteChange) return
     setNoteSaving(true)
-    await onNoteChange(activeWordIndex, noteInput.trim())
-    setNoteSaving(false)
-    setActiveWordIndex(null)
-    setNoteInput('')
+    try {
+      await onNoteChange(activeWordIndex, noteInput.trim())
+      setActiveWordIndex(null)
+      setNoteInput('')
+    } finally {
+      setNoteSaving(false)
+    }
   }
 
   async function handleNoteClear() {
     if (!onNoteChange) return
     setNoteSaving(true)
-    await onNoteChange(activeWordIndex, '')
-    setNoteSaving(false)
-    setActiveWordIndex(null)
-    setNoteInput('')
+    try {
+      await onNoteChange(activeWordIndex, '')
+      setActiveWordIndex(null)
+      setNoteInput('')
+    } finally {
+      setNoteSaving(false)
+    }
   }
 
   // ── Edit mode (lyric text + notation) ──────────────────────────────────

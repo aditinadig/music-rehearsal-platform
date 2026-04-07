@@ -3,9 +3,25 @@ import { supabase } from '../../supabase/client'
 
 const CHANGE_LABELS = {
   assignment_changed: { label: 'Assignment', color: 'bg-indigo-100 text-indigo-600' },
-  cue_changed:        { label: 'Cue',        color: 'bg-purple-100 text-purple-600' },
-  lyric_edited:       { label: 'Lyric Edit', color: 'bg-amber-100 text-amber-600' },
-  notation_edited:    { label: 'Notation Edit', color: 'bg-teal-100 text-teal-600' },
+  cue_changed: { label: 'Cue', color: 'bg-purple-100 text-purple-600' },
+  lyric_edited: { label: 'Lyric Edit', color: 'bg-amber-100 text-amber-600' },
+  note_edited: { label: 'Note Update', color: 'bg-teal-100 text-teal-600' },
+}
+
+function renderChangeValue(change) {
+  if (!change.new_value) return null
+
+  if (change.old_value) {
+    return (
+      <>
+        <span className="line-through text-gray-400">{change.old_value}</span>
+        {' -> '}
+        {change.new_value}
+      </>
+    )
+  }
+
+  return change.new_value
 }
 
 export default function AcknowledgmentStatus({ songId }) {
@@ -14,6 +30,63 @@ export default function AcknowledgmentStatus({ songId }) {
 
   useEffect(() => {
     fetchChanges()
+  }, [songId])
+
+  useEffect(() => {
+    if (!songId) return
+
+    const channel = supabase
+      .channel(`manager-status-${songId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'change_log',
+        },
+        async () => {
+          await fetchChanges()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'acknowledgments',
+        },
+        async () => {
+          await fetchChanges()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [songId])
+
+  useEffect(() => {
+    if (!songId) return
+
+    const intervalId = window.setInterval(() => {
+      fetchChanges()
+    }, 2000)
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        fetchChanges()
+      }
+    }
+
+    window.addEventListener('focus', fetchChanges)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', fetchChanges)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [songId])
 
   async function fetchChanges() {
@@ -30,8 +103,8 @@ export default function AcknowledgmentStatus({ songId }) {
       return
     }
 
-    const lineIds = lineData.map(l => l.line_id)
-    const lineMap = Object.fromEntries(lineData.map(l => [l.line_id, l]))
+    const lineIds = lineData.map(line => line.line_id)
+    const lineMap = Object.fromEntries(lineData.map(line => [line.line_id, line]))
 
     const { data, error } = await supabase
       .from('change_log')
@@ -48,8 +121,9 @@ export default function AcknowledgmentStatus({ songId }) {
       .order('changed_at', { ascending: false })
 
     if (!error && data) {
-      setChanges(data.map(c => ({ ...c, line: lineMap[c.line_id] })))
+      setChanges(data.map(change => ({ ...change, line: lineMap[change.line_id] })))
     }
+
     setLoading(false)
   }
 
@@ -64,27 +138,32 @@ export default function AcknowledgmentStatus({ songId }) {
     )
   }
 
-  const totalAcks = changes.flatMap(c => c.acknowledgments)
-  const confirmedCount = totalAcks.filter(a => a.confirmed).length
+  const totalAcks = changes.flatMap(change => change.acknowledgments || [])
+  const confirmedCount = totalAcks.filter(ack => ack.confirmed).length
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-semibold text-gray-800">Acknowledgment Status</h2>
-        <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-          confirmedCount === totalAcks.length && totalAcks.length > 0
-            ? 'bg-green-100 text-green-600'
-            : 'bg-yellow-100 text-yellow-600'
-        }`}>
+        <span
+          className={`text-xs font-medium px-3 py-1 rounded-full ${
+            confirmedCount === totalAcks.length && totalAcks.length > 0
+              ? 'bg-green-100 text-green-600'
+              : 'bg-yellow-100 text-yellow-600'
+          }`}
+        >
           {confirmedCount}/{totalAcks.length} confirmed
         </span>
       </div>
 
       <div className="space-y-3">
         {changes.map(change => {
-          const meta = CHANGE_LABELS[change.change_type] || { label: change.change_type, color: 'bg-gray-100 text-gray-600' }
-          const acks = change.acknowledgments || []
-          const confirmed = acks.filter(a => a.confirmed).length
+          const meta = CHANGE_LABELS[change.change_type] || {
+            label: change.change_type,
+            color: 'bg-gray-100 text-gray-600',
+          }
+          const acknowledgments = change.acknowledgments || []
+          const confirmed = acknowledgments.filter(ack => ack.confirmed).length
 
           return (
             <div key={change.change_id} className="border border-gray-100 rounded-xl p-4">
@@ -98,26 +177,23 @@ export default function AcknowledgmentStatus({ songId }) {
                   </div>
                   <p className="text-sm text-gray-700 truncate">"{change.line?.lyric_text}"</p>
                   {change.new_value && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {change.change_type === 'lyric_edited' && (
-                        <><span className="line-through text-gray-400">{change.old_value}</span>{' → '}{change.new_value}</>
-                      )}
-                      {change.change_type !== 'lyric_edited' && change.new_value}
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{renderChangeValue(change)}</p>
                   )}
                 </div>
-                <span className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
-                  confirmed === acks.length && acks.length > 0
-                    ? 'bg-green-100 text-green-600'
-                    : 'bg-yellow-100 text-yellow-600'
-                }`}>
-                  {confirmed}/{acks.length}
+                <span
+                  className={`text-xs font-medium px-2 py-1 rounded-full shrink-0 ${
+                    confirmed === acknowledgments.length && acknowledgments.length > 0
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-yellow-100 text-yellow-600'
+                  }`}
+                >
+                  {confirmed}/{acknowledgments.length}
                 </span>
               </div>
 
-              {acks.length > 0 && (
+              {acknowledgments.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {acks.map(ack => (
+                  {acknowledgments.map(ack => (
                     <span
                       key={ack.user_id}
                       className={`text-xs px-2 py-1 rounded-full ${
@@ -126,13 +202,13 @@ export default function AcknowledgmentStatus({ songId }) {
                           : 'bg-gray-100 text-gray-500'
                       }`}
                     >
-                      {ack.users?.name} {ack.confirmed ? '✓' : '···'}
+                      {ack.users?.name} {ack.confirmed ? 'Confirmed' : 'Pending'}
                     </span>
                   ))}
                 </div>
               )}
 
-              {acks.length === 0 && (
+              {acknowledgments.length === 0 && (
                 <p className="text-xs text-gray-400">No performers need to acknowledge this change.</p>
               )}
             </div>

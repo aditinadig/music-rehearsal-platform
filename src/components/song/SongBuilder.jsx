@@ -52,21 +52,84 @@ export default function SongBuilder({ song }) {
     setWordNotes(map)
   }
 
+  async function fetchAssignedUsers(lineId, role = null) {
+    const { data: assignmentRows, error: assignmentError } = await supabase
+      .from('assignments')
+      .select('user_id')
+      .eq('line_id', lineId)
+
+    if (assignmentError) {
+      console.error('assigned users fetch failed:', {
+        lineId,
+        role,
+        assignmentError,
+      })
+      throw new Error(assignmentError.message || 'Unable to load assigned users for this line.')
+    }
+
+    const userIds = (assignmentRows || []).map(row => row.user_id)
+    if (!userIds.length) return []
+
+    if (!role) return userIds.map(userId => ({ user_id: userId }))
+
+    const { data: filteredUsers, error: userError } = await supabase
+      .from('users')
+      .select('user_id')
+      .in('user_id', userIds)
+      .eq('role', role)
+
+    if (userError) {
+      console.error('assigned user role filter failed:', {
+        lineId,
+        role,
+        userError,
+      })
+      throw new Error(userError.message || 'Unable to filter assigned users by role.')
+    }
+
+    return filteredUsers || []
+  }
+
   async function handleNoteChange(lineId, wordIndex, noteText) {
+    const previousNote = wordNotes[lineId]?.[wordIndex] || ''
+
     // Always delete existing note for this word first
-    await supabase
+    const { error: deleteError } = await supabase
       .from('word_notes')
       .delete()
       .eq('line_id', lineId)
       .eq('word_index', wordIndex)
 
+    if (deleteError) {
+      console.error('word note delete failed:', { lineId, wordIndex, deleteError })
+      setError(deleteError.message || 'Unable to update this note.')
+      throw deleteError
+    }
+
     if (noteText) {
-      await supabase.from('word_notes').insert({
+      const { error: insertError } = await supabase.from('word_notes').insert({
         line_id: lineId,
         word_index: wordIndex,
         note_text: noteText,
         created_by: user.id
       })
+
+      if (insertError) {
+        console.error('word note insert failed:', { lineId, wordIndex, insertError })
+        setError(insertError.message || 'Unable to save this note.')
+        throw insertError
+      }
+    }
+
+    if (previousNote !== noteText) {
+      const affectedUsers = await fetchAssignedUsers(lineId, 'musician')
+      await writeChangeLog(
+        lineId,
+        'note_edited',
+        previousNote || null,
+        noteText || 'Note cleared',
+        affectedUsers
+      )
     }
 
     setWordNotes(prev => {
@@ -130,12 +193,31 @@ export default function SongBuilder({ song }) {
       .select()
       .single()
 
-    if (error || !changeData) return
+    if (error || !changeData) {
+      console.error('change_log insert failed:', {
+        lineId,
+        changeType,
+        oldValue,
+        newValue,
+        userId: user.id,
+        error,
+      })
+      throw new Error(error?.message || `Failed to write ${changeType} to change_log.`)
+    }
 
     if (affectedUsers.length > 0) {
-      await supabase.from('acknowledgments').insert(
+      const { error: ackError } = await supabase.from('acknowledgments').insert(
         affectedUsers.map(u => ({ change_id: changeData.change_id, user_id: u.user_id, confirmed: false }))
       )
+
+      if (ackError) {
+        console.error('acknowledgments insert failed:', {
+          changeId: changeData.change_id,
+          affectedUsers,
+          ackError,
+        })
+        throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
+      }
     }
   }
 
@@ -146,21 +228,36 @@ export default function SongBuilder({ song }) {
     if (newNotationVal !== line.notation_text) updates.notation_text = newNotationVal
     if (Object.keys(updates).length === 0) return
 
-    await supabase.from('lines').update(updates).eq('line_id', line.line_id)
+    setError('')
 
-    // Find all users assigned to this line so they get acknowledgment rows
-    const { data: assigned } = await supabase
-      .from('assignments')
-      .select('user_id')
+    const { error: updateError } = await supabase
+      .from('lines')
+      .update(updates)
       .eq('line_id', line.line_id)
 
-    const affectedUsers = assigned || []
-
-    if (updates.lyric_text !== undefined) {
-      await writeChangeLog(line.line_id, 'lyric_edited', line.lyric_text, newLyric, affectedUsers)
+    if (updateError) {
+      console.error('line update failed:', {
+        lineId: line.line_id,
+        updates,
+        updateError,
+      })
+      setError(updateError.message || 'Unable to update this line.')
+      throw updateError
     }
-    if ('notation_text' in updates) {
-      await writeChangeLog(line.line_id, 'notation_edited', line.notation_text, newNotationVal, affectedUsers)
+
+    try {
+      if (updates.lyric_text !== undefined) {
+        const singerUsers = await fetchAssignedUsers(line.line_id, 'singer')
+        await writeChangeLog(line.line_id, 'lyric_edited', line.lyric_text, newLyric, singerUsers)
+      }
+      if ('notation_text' in updates) {
+        const musicianUsers = await fetchAssignedUsers(line.line_id, 'musician')
+        await writeChangeLog(line.line_id, 'note_edited', line.notation_text, newNotationVal || 'Notes cleared', musicianUsers)
+      }
+    } catch (logError) {
+      console.error('Line change logging failed:', logError)
+      setError(logError.message || 'Line was updated, but change tracking failed.')
+      throw logError
     }
 
     setLines(prev => prev.map(l => l.line_id === line.line_id ? { ...l, ...updates } : l))
