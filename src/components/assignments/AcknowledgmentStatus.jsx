@@ -66,29 +66,6 @@ export default function AcknowledgmentStatus({ songId }) {
     }
   }, [songId])
 
-  useEffect(() => {
-    if (!songId) return
-
-    const intervalId = window.setInterval(() => {
-      fetchChanges()
-    }, 2000)
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        fetchChanges()
-      }
-    }
-
-    window.addEventListener('focus', fetchChanges)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      window.clearInterval(intervalId)
-      window.removeEventListener('focus', fetchChanges)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [songId])
-
   async function fetchChanges() {
     setLoading(true)
 
