@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 
@@ -12,7 +12,13 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
   const [success, setSuccess] = useState('')
   const [assignments, setAssignments] = useState([])
   const [cues, setCues] = useState([])
-  const formRef = useRef(null)
+
+  // Inline edit state
+  const [editingId, setEditingId] = useState(null)
+  const [inlineMember, setInlineMember] = useState('')
+  const [inlineCue, setInlineCue] = useState('')
+  const [inlineLoading, setInlineLoading] = useState(false)
+  const [inlineError, setInlineError] = useState('')
 
   useEffect(() => {
     if (lines.length > 0) fetchAssignments()
@@ -30,37 +36,33 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
     if (cueData) setCues(cueData)
   }
 
-  async function handleEditClick(assignment) {
-    setSelectedLine(assignment.line_id)
-    setSelectedMember(assignment.user_id)
+  function openInlineEdit(assignment) {
     const existingCue = cues.find(c => c.line_id === assignment.line_id && c.user_id === assignment.user_id)
-    setCueText(existingCue?.cue_text || '')
-    setSuccess('')
-    setError('')
-    formRef.current?.scrollIntoView({ behavior: 'smooth' })
+    setEditingId(assignment.assignment_id)
+    setInlineMember(assignment.user_id)
+    setInlineCue(existingCue?.cue_text || '')
+    setInlineError('')
   }
 
-  async function handleSave() {
-    if (!selectedLine || !selectedMember) return
-    setLoading(true)
-    setError('')
-    setSuccess('')
+  function closeInlineEdit() {
+    setEditingId(null)
+    setInlineMember('')
+    setInlineCue('')
+    setInlineError('')
+  }
+
+  async function saveAssignment(lineId, memberId, cue, { onSuccess, onError, setLoadingFn }) {
+    setLoadingFn(true)
     let snapshotAssignments = []
     let snapshotCues = []
 
     try {
-      const line = lines.find(l => l.line_id === selectedLine)
-      const member = members.find(m => m.user_id === selectedMember)
+      const line = lines.find(l => l.line_id === lineId)
+      const member = members.find(m => m.user_id === memberId)
 
       const [{ data: existingAssignments, error: assignmentFetchError }, { data: existingCues, error: cueFetchError }] = await Promise.all([
-        supabase
-          .from('assignments')
-          .select('assignment_id, user_id')
-          .eq('line_id', selectedLine),
-        supabase
-          .from('cues')
-          .select('cue_id, user_id, cue_text')
-          .eq('line_id', selectedLine)
+        supabase.from('assignments').select('assignment_id, user_id').eq('line_id', lineId),
+        supabase.from('cues').select('cue_id, user_id, cue_text').eq('line_id', lineId)
       ])
 
       if (assignmentFetchError || cueFetchError) {
@@ -71,7 +73,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       const currentCues = existingCues || []
       const currentAssigneeIds = currentAssignments.map(a => a.user_id)
       const currentCueUserIds = currentCues.map(c => c.user_id)
-      const affectedUserIds = [...new Set([...currentAssigneeIds, ...currentCueUserIds, selectedMember])]
+      const affectedUserIds = [...new Set([...currentAssigneeIds, ...currentCueUserIds, memberId])]
       snapshotAssignments = currentAssignments.map(a => ({ ...a }))
       snapshotCues = currentCues.map(c => ({ ...c }))
 
@@ -80,8 +82,8 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
         .map(m => m.name)
         .join(', ') || 'Unassigned'
 
-      const selectedAssignment = currentAssignments.find(a => a.user_id === selectedMember)
-      const assignmentsToRemove = currentAssignments.filter(a => a.user_id !== selectedMember)
+      const selectedAssignment = currentAssignments.find(a => a.user_id === memberId)
+      const assignmentsToRemove = currentAssignments.filter(a => a.user_id !== memberId)
 
       if (assignmentsToRemove.length > 0) {
         const { error: deleteAssignmentsError } = await supabase
@@ -89,117 +91,100 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
           .delete()
           .in('assignment_id', assignmentsToRemove.map(a => a.assignment_id))
 
-        if (deleteAssignmentsError) {
-          throw new Error(deleteAssignmentsError.message)
-        }
+        if (deleteAssignmentsError) throw new Error(deleteAssignmentsError.message)
       }
 
       if (!selectedAssignment) {
         const { error: assignError } = await supabase
           .from('assignments')
-          .insert({
-            line_id: selectedLine,
-            user_id: selectedMember,
-            assigned_by: user.id
-          })
+          .insert({ line_id: lineId, user_id: memberId, assigned_by: user.id })
 
-        if (assignError) {
-          throw new Error(assignError.message)
-        }
+        if (assignError) throw new Error(assignError.message)
       }
 
       const assignmentChanged =
-        currentAssigneeIds.length !== 1 ||
-        currentAssigneeIds[0] !== selectedMember
+        currentAssigneeIds.length !== 1 || currentAssigneeIds[0] !== memberId
 
-      const existingCueForSelectedMember = currentCues.find(c => c.user_id === selectedMember)
-      const otherCueIds = currentCues
-        .filter(c => c.user_id !== selectedMember)
-        .map(c => c.cue_id)
+      const existingCueForMember = currentCues.find(c => c.user_id === memberId)
+      const otherCueIds = currentCues.filter(c => c.user_id !== memberId).map(c => c.cue_id)
 
       if (otherCueIds.length > 0) {
         const { error: deleteOtherCuesError } = await supabase
-          .from('cues')
-          .delete()
-          .in('cue_id', otherCueIds)
-
-        if (deleteOtherCuesError) {
-          throw new Error(deleteOtherCuesError.message)
-        }
+          .from('cues').delete().in('cue_id', otherCueIds)
+        if (deleteOtherCuesError) throw new Error(deleteOtherCuesError.message)
       }
 
-      const trimmedCue = cueText.trim()
-      const previousCueValue = existingCueForSelectedMember?.cue_text || currentCues[0]?.cue_text || null
+      const trimmedCue = cue.trim()
+      const previousCueValue = existingCueForMember?.cue_text || currentCues[0]?.cue_text || null
       const cueChanged = (previousCueValue || '') !== trimmedCue
 
       if (assignmentChanged) {
         await writeChangeLog(
-          selectedLine,
+          lineId,
           'assignment_changed',
           previousAssigneeNames,
-          member ? `${member.name} assigned to: "${line?.lyric_text}"` : `Assigned to user ${selectedMember}`,
+          member ? `${member.name} assigned to: "${line?.lyric_text}"` : `Assigned to user ${memberId}`,
           affectedUserIds
         )
       }
 
       if (trimmedCue) {
-        if (existingCueForSelectedMember) {
+        if (existingCueForMember) {
           const { error: updateCueError } = await supabase
             .from('cues')
             .update({ cue_text: trimmedCue, updated_at: new Date().toISOString() })
-            .eq('cue_id', existingCueForSelectedMember.cue_id)
-
-          if (updateCueError) {
-            throw new Error(updateCueError.message)
-          }
+            .eq('cue_id', existingCueForMember.cue_id)
+          if (updateCueError) throw new Error(updateCueError.message)
         } else {
           const { error: insertCueError } = await supabase
             .from('cues')
-            .insert({
-              line_id: selectedLine,
-              user_id: selectedMember,
-              cue_text: trimmedCue,
-              created_by: user.id
-            })
-
-          if (insertCueError) {
-            throw new Error(insertCueError.message)
-          }
+            .insert({ line_id: lineId, user_id: memberId, cue_text: trimmedCue, created_by: user.id })
+          if (insertCueError) throw new Error(insertCueError.message)
         }
-      } else if (existingCueForSelectedMember) {
+      } else if (existingCueForMember) {
         const { error: deleteCueError } = await supabase
-          .from('cues')
-          .delete()
-          .eq('cue_id', existingCueForSelectedMember.cue_id)
-
-        if (deleteCueError) {
-          throw new Error(deleteCueError.message)
-        }
+          .from('cues').delete().eq('cue_id', existingCueForMember.cue_id)
+        if (deleteCueError) throw new Error(deleteCueError.message)
       }
 
       if (cueChanged) {
-        await writeChangeLog(
-          selectedLine,
-          'cue_changed',
-          previousCueValue,
-          trimmedCue || 'Cue cleared',
-          affectedUserIds
-        )
+        await writeChangeLog(lineId, 'cue_changed', previousCueValue, trimmedCue || 'Cue cleared', affectedUserIds)
       }
 
-      setSuccess('Assignment saved!')
-      setSelectedLine('')
-      setSelectedMember('')
-      setCueText('')
       fetchAssignments()
       if (onAssignmentSaved) onAssignmentSaved()
-    } catch (saveError) {
-      await rollbackAssignmentState(selectedLine, snapshotAssignments, snapshotCues)
-      console.error('Assignment save failed:', saveError)
-      setError(saveError.message || 'Unable to save assignment changes.')
+      onSuccess()
+    } catch (err) {
+      await rollbackAssignmentState(lineId, snapshotAssignments, snapshotCues)
+      onError(err.message || 'Unable to save assignment changes.')
     } finally {
-      setLoading(false)
+      setLoadingFn(false)
     }
+  }
+
+  async function handleSaveNew() {
+    if (!selectedLine || !selectedMember) return
+    setError('')
+    setSuccess('')
+    await saveAssignment(selectedLine, selectedMember, cueText, {
+      setLoadingFn: setLoading,
+      onSuccess: () => {
+        setSuccess('Assignment saved!')
+        setSelectedLine('')
+        setSelectedMember('')
+        setCueText('')
+      },
+      onError: msg => setError(msg),
+    })
+  }
+
+  async function handleInlineSave(lineId) {
+    setInlineError('')
+    await saveAssignment(lineId, inlineMember, inlineCue, {
+      setLoadingFn: setInlineLoading,
+      onSuccess: closeInlineEdit,
+      onError: msg => setInlineError(msg),
+    })
   }
 
   async function rollbackAssignmentState(lineId, originalAssignments, originalCues) {
@@ -210,116 +195,48 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       ])
 
       if ((currentAssignments || []).length > 0) {
-        const { error: deleteAssignmentsError } = await supabase
-          .from('assignments')
-          .delete()
-          .in('assignment_id', currentAssignments.map(a => a.assignment_id))
-
-        if (deleteAssignmentsError) {
-          console.error('Assignment rollback delete failed:', deleteAssignmentsError)
-        }
+        await supabase.from('assignments').delete().in('assignment_id', currentAssignments.map(a => a.assignment_id))
       }
-
       if ((currentCues || []).length > 0) {
-        const { error: deleteCuesError } = await supabase
-          .from('cues')
-          .delete()
-          .in('cue_id', currentCues.map(c => c.cue_id))
-
-        if (deleteCuesError) {
-          console.error('Cue rollback delete failed:', deleteCuesError)
-        }
+        await supabase.from('cues').delete().in('cue_id', currentCues.map(c => c.cue_id))
       }
-
       if ((originalAssignments || []).length > 0) {
-        const { error: restoreAssignmentsError } = await supabase
-          .from('assignments')
-          .insert(
-            originalAssignments.map(assignment => ({
-              line_id: lineId,
-              user_id: assignment.user_id,
-              assigned_by: user.id
-            }))
-          )
-
-        if (restoreAssignmentsError) {
-          console.error('Assignment rollback restore failed:', restoreAssignmentsError)
-        }
+        await supabase.from('assignments').insert(
+          originalAssignments.map(a => ({ line_id: lineId, user_id: a.user_id, assigned_by: user.id }))
+        )
       }
-
       if ((originalCues || []).length > 0) {
-        const { error: restoreCuesError } = await supabase
-          .from('cues')
-          .insert(
-            originalCues.map(cue => ({
-              line_id: lineId,
-              user_id: cue.user_id,
-              cue_text: cue.cue_text,
-              created_by: cue.created_by || user.id
-            }))
-          )
-
-        if (restoreCuesError) {
-          console.error('Cue rollback restore failed:', restoreCuesError)
-        }
+        await supabase.from('cues').insert(
+          originalCues.map(c => ({ line_id: lineId, user_id: c.user_id, cue_text: c.cue_text, created_by: c.created_by || user.id }))
+        )
       }
     } catch (rollbackError) {
-      console.error('Rollback failed:', { lineId, rollbackError })
+      console.error('Rollback failed:', rollbackError)
     } finally {
       fetchAssignments()
     }
   }
 
   async function writeChangeLog(lineId, changeType, oldValue, newValue, affectedUserIds) {
-    // Insert into change_log
     const { data: changeData, error: changeError } = await supabase
       .from('change_log')
-      .insert({
-        line_id: lineId,
-        change_type: changeType,
-        old_value: oldValue,
-        new_value: newValue,
-        changed_by: user.id
-      })
+      .insert({ line_id: lineId, change_type: changeType, old_value: oldValue, new_value: newValue, changed_by: user.id })
       .select()
       .single()
 
     if (changeError || !changeData) {
-      console.error('change_log insert failed:', {
-        lineId,
-        changeType,
-        oldValue,
-        newValue,
-        userId: user.id,
-        changeError,
-      })
       throw new Error(changeError?.message || `Failed to write ${changeType} to change_log.`)
     }
 
     if (!affectedUserIds.length) return
 
-    // Create acknowledgment rows for all affected users
     const { error: ackError } = await supabase
       .from('acknowledgments')
-      .insert(
-        affectedUserIds.map(affectedUserId => ({
-          change_id: changeData.change_id,
-          user_id: affectedUserId,
-          confirmed: false
-        }))
-      )
+      .insert(affectedUserIds.map(uid => ({ change_id: changeData.change_id, user_id: uid, confirmed: false })))
 
-    if (ackError) {
-      console.error('acknowledgments insert failed:', {
-        changeId: changeData.change_id,
-        affectedUserIds,
-        ackError,
-      })
-      throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
-    }
+    if (ackError) throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
   }
 
-  // Group lines by section for the dropdown
   const groupedLines = lines.reduce((acc, line) => {
     const section = line.section_label || 'General'
     if (!acc[section]) acc[section] = []
@@ -330,89 +247,82 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
   const performers = members.filter(m => m.role !== 'manager')
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-1" ref={formRef}>Assign Lines & Set Cues</h2>
-      <p className="text-sm text-gray-400 mb-6">
-        Pick a line, assign it to a performer, and optionally set an entry cue for them.
-      </p>
+    <div className="space-y-6">
+      {/* New assignment form */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h2 className="text-lg font-semibold text-gray-800 mb-1">Assign Lines & Set Cues</h2>
+        <p className="text-sm text-gray-400 mb-6">
+          Pick a line, assign it to a performer, and optionally set an entry cue.
+        </p>
 
-      {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>
+        )}
+        {success && (
+          <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-3 mb-4">{success}</div>
+        )}
 
-      {success && (
-        <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-3 mb-4">
-          {success}
-        </div>
-      )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Line</label>
+            <select
+              value={selectedLine}
+              onChange={e => setSelectedLine(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="">Select a line...</option>
+              {Object.entries(groupedLines).map(([section, sectionLines]) => (
+                <optgroup key={section} label={section}>
+                  {sectionLines.map(line => (
+                    <option key={line.line_id} value={line.line_id}>{line.lyric_text}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
 
-      <div className="space-y-4">
-        {/* Line picker */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Line</label>
-          <select
-            value={selectedLine}
-            onChange={e => setSelectedLine(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Assign to</label>
+            <select
+              value={selectedMember}
+              onChange={e => setSelectedMember(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="">Select a performer...</option>
+              {performers.map(member => (
+                <option key={member.user_id} value={member.user_id}>
+                  {member.name} ({member.role})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Entry Cue <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={cueText}
+              onChange={e => setCueText(e.target.value)}
+              placeholder="e.g. Enter after bar 8, or after the guitar intro"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          </div>
+
+          <button
+            onClick={handleSaveNew}
+            disabled={loading || !selectedLine || !selectedMember}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            <option value="">Select a line...</option>
-            {Object.entries(groupedLines).map(([section, sectionLines]) => (
-              <optgroup key={section} label={section}>
-                {sectionLines.map(line => (
-                  <option key={line.line_id} value={line.line_id}>
-                    {line.lyric_text}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            {loading ? 'Saving...' : 'Save Assignment'}
+          </button>
         </div>
-
-        {/* Member picker */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Assign to</label>
-          <select
-            value={selectedMember}
-            onChange={e => setSelectedMember(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          >
-            <option value="">Select a performer...</option>
-            {performers.map(member => (
-              <option key={member.user_id} value={member.user_id}>
-                {member.name} ({member.role})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Cue input */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Entry Cue <span className="text-gray-400">(optional)</span>
-          </label>
-          <input
-            type="text"
-            value={cueText}
-            onChange={e => setCueText(e.target.value)}
-            placeholder="e.g. Enter after bar 8, or after the guitar intro"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
-        </div>
-
-        <button
-          onClick={handleSave}
-          disabled={loading || !selectedLine || !selectedMember}
-          className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
-        >
-          {loading ? 'Saving...' : 'Save Assignment'}
-        </button>
       </div>
 
       {/* Current assignments list */}
       {assignments.length > 0 && (
-        <div className="mt-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Current Assignments</h3>
           <div className="space-y-2">
             {assignments.map(a => {
@@ -420,27 +330,82 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
               const member = members.find(m => m.user_id === a.user_id)
               const cue = cues.find(c => c.line_id === a.line_id && c.user_id === a.user_id)
               if (!line || !member) return null
+              const isEditing = editingId === a.assignment_id
+
               return (
-                <div key={a.assignment_id} className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
-                  <div className="flex items-start justify-between gap-4">
+                <div key={a.assignment_id} className={`rounded-xl border transition ${isEditing ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50'}`}>
+                  {/* Row summary */}
+                  <div className="flex items-start justify-between gap-4 px-4 py-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-indigo-500 font-medium mb-0.5">{line.section_label}</p>
-                      <p className="text-gray-800 truncate">{line.lyric_text}</p>
-                      {cue && (
+                      <p className="text-sm text-gray-800 truncate">{line.lyric_text}</p>
+                      {cue && !isEditing && (
                         <p className="text-xs text-gray-400 mt-1">Cue: {cue.cue_text}</p>
                       )}
                     </div>
                     <div className="text-right shrink-0 space-y-1">
-                      <p className="text-gray-700 font-medium">{member.name}</p>
+                      <p className="text-sm text-gray-700 font-medium">{member.name}</p>
                       <p className="text-xs text-gray-400 capitalize">{member.role}</p>
-                      <button
-                        onClick={() => handleEditClick(a)}
-                        className="text-xs text-indigo-500 hover:underline block ml-auto"
-                      >
-                        Edit
-                      </button>
+                      {!isEditing && (
+                        <button
+                          onClick={() => openInlineEdit(a)}
+                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium block ml-auto"
+                        >
+                          Edit
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {/* Inline edit form */}
+                  {isEditing && (
+                    <div className="border-t border-indigo-200 px-4 py-4 space-y-3">
+                      {inlineError && (
+                        <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2">{inlineError}</div>
+                      )}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Reassign to</label>
+                        <select
+                          value={inlineMember}
+                          onChange={e => setInlineMember(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                        >
+                          {performers.map(m => (
+                            <option key={m.user_id} value={m.user_id}>
+                              {m.name} ({m.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Entry Cue <span className="text-gray-400">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={inlineCue}
+                          onChange={e => setInlineCue(e.target.value)}
+                          placeholder="e.g. Enter after bar 8"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleInlineSave(a.line_id)}
+                          disabled={inlineLoading || !inlineMember}
+                          className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+                        >
+                          {inlineLoading ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={closeInlineEdit}
+                          className="px-4 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:bg-gray-200 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -449,7 +414,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       )}
 
       {assignments.length === 0 && lines.length > 0 && (
-        <p className="text-xs text-gray-400 mt-6">No assignments yet for this song.</p>
+        <p className="text-xs text-gray-400">No assignments yet for this song.</p>
       )}
     </div>
   )

@@ -27,6 +27,7 @@ function renderChangeValue(change) {
 export default function AcknowledgmentStatus({ songId }) {
   const [changes, setChanges] = useState([])
   const [loading, setLoading] = useState(true)
+  const [recentlyConfirmedUsers, setRecentlyConfirmedUsers] = useState(new Set())
 
   useEffect(() => {
     fetchChanges()
@@ -51,11 +52,22 @@ export default function AcknowledgmentStatus({ songId }) {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'acknowledgments',
         },
-        async () => {
+        async (payload) => {
+          if (payload.new?.confirmed && !payload.old?.confirmed) {
+            const userId = payload.new.user_id
+            setRecentlyConfirmedUsers(prev => new Set(prev).add(userId))
+            setTimeout(() => {
+              setRecentlyConfirmedUsers(prev => {
+                const next = new Set(prev)
+                next.delete(userId)
+                return next
+              })
+            }, 3000)
+          }
           await fetchChanges()
         }
       )
@@ -109,7 +121,7 @@ export default function AcknowledgmentStatus({ songId }) {
   if (changes.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Acknowledgment Status</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Update History</h2>
         <p className="text-sm text-gray-400">No changes have been pushed for this song yet.</p>
       </div>
     )
@@ -121,7 +133,7 @@ export default function AcknowledgmentStatus({ songId }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Acknowledgment Status</h2>
+        <h2 className="text-lg font-semibold text-gray-800">Update History</h2>
         <span
           className={`text-xs font-medium px-3 py-1 rounded-full ${
             confirmedCount === totalAcks.length && totalAcks.length > 0
@@ -170,18 +182,23 @@ export default function AcknowledgmentStatus({ songId }) {
 
               {acknowledgments.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {acknowledgments.map(ack => (
-                    <span
-                      key={ack.user_id}
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        ack.confirmed
-                          ? 'bg-green-50 text-green-600'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {ack.users?.name} {ack.confirmed ? 'Confirmed' : 'Pending'}
-                    </span>
-                  ))}
+                  {acknowledgments.map(ack => {
+                    const justConfirmed = recentlyConfirmedUsers.has(ack.user_id) && ack.confirmed
+                    return (
+                      <span
+                        key={ack.user_id}
+                        className={`text-xs px-2 py-1 rounded-full transition-colors duration-300 ${
+                          justConfirmed
+                            ? 'bg-green-200 text-green-700 font-semibold ring-1 ring-green-400'
+                            : ack.confirmed
+                            ? 'bg-green-50 text-green-600'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {ack.users?.name} {ack.confirmed ? (justConfirmed ? 'Just confirmed!' : 'Confirmed') : 'Pending'}
+                      </span>
+                    )
+                  })}
                 </div>
               )}
 
