@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 
@@ -20,8 +20,13 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
   const [inlineLoading, setInlineLoading] = useState(false)
   const [inlineError, setInlineError] = useState('')
 
+  // Undo state
+  const [undoAction, setUndoAction] = useState(null) // { lineId, prevAssignments, prevCues }
+  const undoTimerRef = useRef(null)
+
   useEffect(() => {
     if (lines.length > 0) fetchAssignments()
+    return () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current) }
   }, [lines])
 
   async function fetchAssignments() {
@@ -153,6 +158,12 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
       fetchAssignments()
       if (onAssignmentSaved) onAssignmentSaved()
+
+      // Arm undo for 5 seconds
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+      setUndoAction({ lineId, prevAssignments: snapshotAssignments, prevCues: snapshotCues })
+      undoTimerRef.current = setTimeout(() => setUndoAction(null), 5000)
+
       onSuccess()
     } catch (err) {
       await rollbackAssignmentState(lineId, snapshotAssignments, snapshotCues)
@@ -185,6 +196,14 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       onSuccess: closeInlineEdit,
       onError: msg => setInlineError(msg),
     })
+  }
+
+  async function handleUndoAssignment() {
+    if (!undoAction) return
+    const { lineId, prevAssignments, prevCues } = undoAction
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setUndoAction(null)
+    await rollbackAssignmentState(lineId, prevAssignments, prevCues)
   }
 
   async function rollbackAssignmentState(lineId, originalAssignments, originalCues) {
@@ -258,8 +277,19 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
         {error && (
           <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>
         )}
-        {success && (
+        {success && !undoAction && (
           <div className="bg-green-50 text-green-600 text-sm rounded-lg px-4 py-3 mb-4">{success}</div>
+        )}
+        {undoAction && (
+          <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+            <p className="text-xs text-amber-800">Assignment saved.</p>
+            <button
+              onClick={handleUndoAssignment}
+              className="text-xs font-semibold text-amber-700 hover:underline ml-4"
+            >
+              Undo
+            </button>
+          </div>
         )}
 
         <div className="space-y-4">
@@ -268,7 +298,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
             <select
               value={selectedLine}
               onChange={e => setSelectedLine(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="">Select a line...</option>
               {Object.entries(groupedLines).map(([section, sectionLines]) => (
@@ -286,7 +316,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
             <select
               value={selectedMember}
               onChange={e => setSelectedMember(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="">Select a performer...</option>
               {performers.map(member => (
@@ -306,14 +336,14 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
               value={cueText}
               onChange={e => setCueText(e.target.value)}
               placeholder="e.g. Enter after bar 8, or after the guitar intro"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
           </div>
 
           <button
             onClick={handleSaveNew}
             disabled={loading || !selectedLine || !selectedMember}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+            className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
           >
             {loading ? 'Saving...' : 'Save Assignment'}
           </button>
@@ -333,11 +363,11 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
               const isEditing = editingId === a.assignment_id
 
               return (
-                <div key={a.assignment_id} className={`rounded-xl border transition ${isEditing ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50'}`}>
+                <div key={a.assignment_id} className={`rounded-xl border transition ${isEditing ? 'border-violet-300 bg-violet-50' : 'border-gray-100 bg-gray-50'}`}>
                   {/* Row summary */}
                   <div className="flex items-start justify-between gap-4 px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-indigo-500 font-medium mb-0.5">{line.section_label}</p>
+                      <p className="text-xs text-violet-500 font-medium mb-0.5">{line.section_label}</p>
                       <p className="text-sm text-gray-800 truncate">{line.lyric_text}</p>
                       {cue && !isEditing && (
                         <p className="text-xs text-gray-400 mt-1">Cue: {cue.cue_text}</p>
@@ -349,7 +379,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                       {!isEditing && (
                         <button
                           onClick={() => openInlineEdit(a)}
-                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium block ml-auto"
+                          className="text-xs text-violet-500 hover:text-violet-700 font-medium block ml-auto"
                         >
                           Edit
                         </button>
@@ -359,7 +389,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
                   {/* Inline edit form */}
                   {isEditing && (
-                    <div className="border-t border-indigo-200 px-4 py-4 space-y-3">
+                    <div className="border-t border-violet-200 px-4 py-4 space-y-3">
                       {inlineError && (
                         <div className="bg-red-50 text-red-600 text-xs rounded-lg px-3 py-2">{inlineError}</div>
                       )}
@@ -368,7 +398,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                         <select
                           value={inlineMember}
                           onChange={e => setInlineMember(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
                         >
                           {performers.map(m => (
                             <option key={m.user_id} value={m.user_id}>
@@ -386,14 +416,14 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                           value={inlineCue}
                           onChange={e => setInlineCue(e.target.value)}
                           placeholder="e.g. Enter after bar 8"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleInlineSave(a.line_id)}
                           disabled={inlineLoading || !inlineMember}
-                          className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+                          className="bg-violet-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-violet-700 transition disabled:opacity-50"
                         >
                           {inlineLoading ? 'Saving...' : 'Save'}
                         </button>

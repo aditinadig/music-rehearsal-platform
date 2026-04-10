@@ -72,12 +72,12 @@ export default function InviteMember({ groupId, onMemberAdded }) {
           value={email}
           onChange={e => setEmail(e.target.value)}
           placeholder="member@email.com"
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
         />
         <button
           onClick={handleInvite}
           disabled={loading || !email.trim()}
-          className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+          className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
         >
           {loading ? 'Adding...' : 'Add Member'}
         </button>

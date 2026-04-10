@@ -16,13 +16,38 @@ function EmptyState({ icon, title, hint, actionLabel, onAction }) {
       <p className="text-sm font-semibold text-gray-700">{title}</p>
       {hint && <p className="text-xs text-gray-400 max-w-xs">{hint}</p>}
       {actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="mt-1 text-xs font-medium text-indigo-600 hover:underline"
-        >
+        <button onClick={onAction} className="mt-1 text-xs font-medium text-violet-600 hover:underline">
           {actionLabel}
         </button>
       )}
+    </div>
+  )
+}
+
+function SongPreview({ lines }) {
+  const grouped = lines.reduce((acc, line) => {
+    const s = line.section_label || 'General'
+    if (!acc[s]) acc[s] = []
+    acc[s].push(line)
+    return acc
+  }, {})
+
+  if (lines.length === 0) {
+    return <p className="text-sm text-gray-400 text-center py-4">No lines yet.</p>
+  }
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(grouped).map(([section, sectionLines]) => (
+        <div key={section}>
+          <p className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-2">{section}</p>
+          <div className="bg-gray-50 rounded-xl px-4 py-2 space-y-1.5">
+            {sectionLines.map(line => (
+              <p key={line.line_id} className="text-sm text-gray-700">{line.lyric_text}</p>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -46,10 +71,10 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('songs')
   const [memberRefresh, setMemberRefresh] = useState(0)
+  const [previewMode, setPreviewMode] = useState(false)
+  const [deletingSongId, setDeletingSongId] = useState(null)
 
-  useEffect(() => {
-    fetchGroups()
-  }, [])
+  useEffect(() => { fetchGroups() }, [])
 
   useEffect(() => {
     if (selectedGroup) {
@@ -116,6 +141,24 @@ export default function ManagerDashboard() {
     setMembers(loadedMembers)
   }
 
+  async function handleDeleteSong(song, e) {
+    e.stopPropagation()
+    if (!window.confirm(`Delete "${song.title}"? All lines and assignments will be removed.`)) return
+    setDeletingSongId(song.song_id)
+
+    const { error } = await supabase.from('songs').delete().eq('song_id', song.song_id)
+    setDeletingSongId(null)
+    if (error) return
+
+    const newSongs = songs.filter(s => s.song_id !== song.song_id)
+    setSongs(newSongs)
+    if (selectedSong?.song_id === song.song_id) {
+      const next = newSongs[0] || null
+      setSelectedSong(next)
+      setLines([])
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -127,16 +170,22 @@ export default function ManagerDashboard() {
   const performers = members.filter(m => m.role !== 'manager')
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f7f6f2]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 px-4 sm:px-8 py-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">Manager Dashboard</h1>
-          <p className="text-sm text-gray-400">Welcome, {profile?.name}</p>
+      <div className="bg-white border-b border-gray-100 px-4 sm:px-8 py-3 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <span style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: '1.35rem', color: '#18181b', letterSpacing: '-0.01em' }}>
+            Cue<span style={{ color: '#7c3aed' }}>.</span>
+          </span>
+          <span className="hidden sm:block w-px h-5 bg-gray-200" />
+          <span className="hidden sm:block text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">Manager</span>
         </div>
-        <button onClick={logout} className="text-sm text-red-400 hover:underline">
-          Log out
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500 hidden sm:block">{profile?.name}</span>
+          <button onClick={logout} className="text-xs font-medium text-gray-600 hover:text-red-600 transition px-3 py-1.5 rounded-lg hover:bg-red-50">
+            Log out
+          </button>
+        </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-8 py-4 sm:py-8 space-y-5">
@@ -160,10 +209,7 @@ export default function ManagerDashboard() {
           <div className="space-y-3">
             <CreateGroup onGroupCreated={handleGroupCreated} />
             {groups.length > 0 && (
-              <button
-                onClick={() => setShowCreateGroup(false)}
-                className="text-sm text-gray-400 hover:underline"
-              >
+              <button onClick={() => setShowCreateGroup(false)} className="text-sm text-gray-400 hover:underline">
                 Cancel
               </button>
             )}
@@ -173,9 +219,9 @@ export default function ManagerDashboard() {
         {groups.length > 0 && !showCreateGroup && (
           <>
             {/* Group selector banner */}
-            <div className="bg-indigo-50 rounded-2xl px-6 py-4 flex items-center justify-between gap-4">
+            <div className="bg-violet-50 rounded-2xl px-6 py-4 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-wrap flex-1">
-                <p className="text-xs text-indigo-400 font-medium uppercase tracking-wide shrink-0">Group</p>
+                <p className="text-xs text-violet-400 font-medium uppercase tracking-wide shrink-0">Group</p>
                 <div className="flex gap-2 flex-wrap">
                   {groups.map(g => (
                     <button
@@ -183,8 +229,8 @@ export default function ManagerDashboard() {
                       onClick={() => setSelectedGroup(g)}
                       className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                         selectedGroup?.group_id === g.group_id
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-violet-100 text-violet-600 hover:bg-violet-200'
                       }`}
                     >
                       {g.name}
@@ -194,13 +240,13 @@ export default function ManagerDashboard() {
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 {members.length > 0 && (
-                  <span className="text-xs font-medium text-indigo-500 bg-indigo-100 px-3 py-1.5 rounded-full">
+                  <span className="text-xs font-medium text-violet-500 bg-violet-100 px-3 py-1.5 rounded-full">
                     {members.length} member{members.length !== 1 ? 's' : ''}
                   </span>
                 )}
                 <button
                   onClick={() => setShowCreateGroup(true)}
-                  className="text-xs font-medium text-indigo-600 hover:underline"
+                  className="text-xs font-medium text-violet-600 hover:underline"
                 >
                   + New Group
                 </button>
@@ -213,17 +259,30 @@ export default function ManagerDashboard() {
                 <span className="text-xs font-semibold text-gray-500 shrink-0">Song</span>
                 <div className="flex gap-2 flex-wrap flex-1">
                   {songs.map(song => (
-                    <button
-                      key={song.song_id}
-                      onClick={() => setSelectedSong(song)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                        selectedSong?.song_id === song.song_id
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {song.title}
-                    </button>
+                    <div key={song.song_id} className="relative group/pill">
+                      <button
+                        onClick={() => setSelectedSong(song)}
+                        className={`pl-3 pr-7 py-1.5 rounded-lg text-sm font-medium transition ${
+                          selectedSong?.song_id === song.song_id
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {song.title}
+                      </button>
+                      <button
+                        onClick={e => handleDeleteSong(song, e)}
+                        disabled={deletingSongId === song.song_id}
+                        title="Delete song"
+                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition opacity-0 group-hover/pill:opacity-100 ${
+                          selectedSong?.song_id === song.song_id
+                            ? 'bg-violet-400 text-white hover:bg-violet-300'
+                            : 'bg-gray-300 text-gray-600 hover:bg-red-200 hover:text-red-600'
+                        }`}
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -238,7 +297,7 @@ export default function ManagerDashboard() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex-1 px-4 py-3 text-sm font-medium transition border-b-2 -mb-px ${
                       activeTab === tab.id
-                        ? 'border-indigo-600 text-indigo-600'
+                        ? 'border-violet-600 text-violet-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -251,12 +310,30 @@ export default function ManagerDashboard() {
 
                 {/* Songs tab */}
                 {activeTab === 'songs' && (
-                  <div className="space-y-6">
-                    <CreateSong
-                      groupId={selectedGroup.group_id}
-                      onSongCreated={handleSongCreated}
-                    />
-                    {selectedSong ? (
+                  <div className="space-y-4">
+                    <CreateSong groupId={selectedGroup.group_id} onSongCreated={handleSongCreated} />
+
+                    {selectedSong && lines.length > 0 && (
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => setPreviewMode(v => !v)}
+                          className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition ${
+                            previewMode
+                              ? 'bg-violet-600 text-white border-violet-600'
+                              : 'bg-white text-violet-600 border-violet-300 hover:bg-violet-50'
+                          }`}
+                        >
+                          {previewMode ? 'Exit Preview' : 'Preview as Performer'}
+                        </button>
+                      </div>
+                    )}
+
+                    {previewMode && selectedSong ? (
+                      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Performer view — {selectedSong.title}</p>
+                        <SongPreview lines={lines} />
+                      </div>
+                    ) : selectedSong ? (
                       <SongBuilder
                         song={selectedSong}
                         onLinesUpdated={() => fetchLines(selectedSong.song_id)}

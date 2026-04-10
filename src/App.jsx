@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/shared/ProtectedRoute'
 import RoleRedirect from './components/shared/RoleRedirect'
+import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ManagerDashboard from './pages/ManagerDashboard'
@@ -14,12 +15,13 @@ export default function App() {
       <AuthProvider>
         <Routes>
           {/* Public routes */}
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Role based redirect after login */}
+          {/* Role-based redirect after login */}
           <Route
-            path="/"
+            path="/app"
             element={
               <ProtectedRoute>
                 <RoleRedirect />
@@ -27,7 +29,7 @@ export default function App() {
             }
           />
 
-          {/* Protected routes */}
+          {/* Protected role routes */}
           <Route
             path="/manager"
             element={

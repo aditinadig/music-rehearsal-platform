@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/AuthContext'
 import LineItem from './LineItem'
@@ -8,7 +8,7 @@ const SECTIONS = ['Intro', 'Verse 1', 'Verse 2', 'Pre-Chorus', 'Chorus', 'Bridge
 export default function SongBuilder({ song }) {
   const { user } = useAuth()
   const [lines, setLines] = useState([])
-  const [wordNotes, setWordNotes] = useState({}) // { [lineId]: { [wordIndex]: noteText } }
+  const [wordNotes, setWordNotes] = useState({})
   const [sectionLabel, setSectionLabel] = useState('Verse 1')
   const [customSection, setCustomSection] = useState('')
   const [lyricBlob, setLyricBlob] = useState('')
@@ -17,8 +17,13 @@ export default function SongBuilder({ song }) {
   const [error, setError] = useState('')
   const [fetching, setFetching] = useState(true)
 
+  // Undo state for lyric/notation edits
+  const [undoState, setUndoState] = useState(null) // { lineId, oldLyric, oldNotation }
+  const undoTimerRef = useRef(null)
+
   useEffect(() => {
     fetchLines()
+    return () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current) }
   }, [song.song_id])
 
   async function fetchLines() {
@@ -58,18 +63,10 @@ export default function SongBuilder({ song }) {
       .select('user_id')
       .eq('line_id', lineId)
 
-    if (assignmentError) {
-      console.error('assigned users fetch failed:', {
-        lineId,
-        role,
-        assignmentError,
-      })
-      throw new Error(assignmentError.message || 'Unable to load assigned users for this line.')
-    }
+    if (assignmentError) throw new Error(assignmentError.message || 'Unable to load assigned users for this line.')
 
     const userIds = (assignmentRows || []).map(row => row.user_id)
     if (!userIds.length) return []
-
     if (!role) return userIds.map(userId => ({ user_id: userId }))
 
     const { data: filteredUsers, error: userError } = await supabase
@@ -78,33 +75,20 @@ export default function SongBuilder({ song }) {
       .in('user_id', userIds)
       .eq('role', role)
 
-    if (userError) {
-      console.error('assigned user role filter failed:', {
-        lineId,
-        role,
-        userError,
-      })
-      throw new Error(userError.message || 'Unable to filter assigned users by role.')
-    }
-
+    if (userError) throw new Error(userError.message || 'Unable to filter assigned users by role.')
     return filteredUsers || []
   }
 
   async function handleNoteChange(lineId, wordIndex, noteText) {
     const previousNote = wordNotes[lineId]?.[wordIndex] || ''
 
-    // Always delete existing note for this word first
     const { error: deleteError } = await supabase
       .from('word_notes')
       .delete()
       .eq('line_id', lineId)
       .eq('word_index', wordIndex)
 
-    if (deleteError) {
-      console.error('word note delete failed:', { lineId, wordIndex, deleteError })
-      setError(deleteError.message || 'Unable to update this note.')
-      throw deleteError
-    }
+    if (deleteError) { setError(deleteError.message || 'Unable to update this note.'); throw deleteError }
 
     if (noteText) {
       const { error: insertError } = await supabase.from('word_notes').insert({
@@ -113,23 +97,12 @@ export default function SongBuilder({ song }) {
         note_text: noteText,
         created_by: user.id
       })
-
-      if (insertError) {
-        console.error('word note insert failed:', { lineId, wordIndex, insertError })
-        setError(insertError.message || 'Unable to save this note.')
-        throw insertError
-      }
+      if (insertError) { setError(insertError.message || 'Unable to save this note.'); throw insertError }
     }
 
     if (previousNote !== noteText) {
       const affectedUsers = await fetchAssignedUsers(lineId, 'musician')
-      await writeChangeLog(
-        lineId,
-        'note_edited',
-        previousNote || null,
-        noteText || 'Note cleared',
-        affectedUsers
-      )
+      await writeChangeLog(lineId, 'note_edited', previousNote || null, noteText || 'Note cleared', affectedUsers)
     }
 
     setWordNotes(prev => {
@@ -146,12 +119,7 @@ export default function SongBuilder({ song }) {
     setError('')
 
     const label = sectionLabel === 'Custom' ? customSection : sectionLabel
-
-    // Split the blob into individual lines, remove empty lines
-    const rawLines = lyricBlob
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0)
+    const rawLines = lyricBlob.split('\n').map(l => l.trim()).filter(l => l.length > 0)
 
     if (rawLines.length === 0) {
       setError('No valid lines found.')
@@ -159,7 +127,6 @@ export default function SongBuilder({ song }) {
       return
     }
 
-    // Build insert rows, continuing line_number from where we left off
     const startingLineNumber = lines.length + 1
     const rows = rawLines.map((lyric, index) => ({
       song_id: song.song_id,
@@ -169,10 +136,7 @@ export default function SongBuilder({ song }) {
       notation_text: notationText || null
     }))
 
-    const { data, error: insertError } = await supabase
-      .from('lines')
-      .insert(rows)
-      .select()
+    const { data, error: insertError } = await supabase.from('lines').insert(rows).select()
 
     if (insertError) {
       setError(insertError.message)
@@ -193,31 +157,13 @@ export default function SongBuilder({ song }) {
       .select()
       .single()
 
-    if (error || !changeData) {
-      console.error('change_log insert failed:', {
-        lineId,
-        changeType,
-        oldValue,
-        newValue,
-        userId: user.id,
-        error,
-      })
-      throw new Error(error?.message || `Failed to write ${changeType} to change_log.`)
-    }
+    if (error || !changeData) throw new Error(error?.message || `Failed to write ${changeType} to change_log.`)
 
     if (affectedUsers.length > 0) {
       const { error: ackError } = await supabase.from('acknowledgments').insert(
         affectedUsers.map(u => ({ change_id: changeData.change_id, user_id: u.user_id, confirmed: false }))
       )
-
-      if (ackError) {
-        console.error('acknowledgments insert failed:', {
-          changeId: changeData.change_id,
-          affectedUsers,
-          ackError,
-        })
-        throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
-      }
+      if (ackError) throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
     }
   }
 
@@ -228,6 +174,10 @@ export default function SongBuilder({ song }) {
     if (newNotationVal !== line.notation_text) updates.notation_text = newNotationVal
     if (Object.keys(updates).length === 0) return
 
+    // Capture old state for undo
+    const prevLyric = line.lyric_text
+    const prevNotation = line.notation_text || ''
+
     setError('')
 
     const { error: updateError } = await supabase
@@ -236,11 +186,6 @@ export default function SongBuilder({ song }) {
       .eq('line_id', line.line_id)
 
     if (updateError) {
-      console.error('line update failed:', {
-        lineId: line.line_id,
-        updates,
-        updateError,
-      })
       setError(updateError.message || 'Unable to update this line.')
       throw updateError
     }
@@ -255,16 +200,79 @@ export default function SongBuilder({ song }) {
         await writeChangeLog(line.line_id, 'note_edited', line.notation_text, newNotationVal || 'Notes cleared', musicianUsers)
       }
     } catch (logError) {
-      console.error('Line change logging failed:', logError)
       setError(logError.message || 'Line was updated, but change tracking failed.')
       throw logError
     }
 
     setLines(prev => prev.map(l => l.line_id === line.line_id ? { ...l, ...updates } : l))
+
+    // Arm undo for 5 seconds
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setUndoState({ lineId: line.line_id, oldLyric: prevLyric, oldNotation: prevNotation })
+    undoTimerRef.current = setTimeout(() => setUndoState(null), 5000)
   }
 
-  // Group lines by section
-  const groupedLines = lines.reduce((acc, line) => {
+  async function handleUndoEdit() {
+    if (!undoState) return
+    const { lineId, oldLyric, oldNotation } = undoState
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setUndoState(null)
+
+    await supabase.from('lines').update({
+      lyric_text: oldLyric,
+      notation_text: oldNotation || null
+    }).eq('line_id', lineId)
+
+    setLines(prev => prev.map(l =>
+      l.line_id === lineId ? { ...l, lyric_text: oldLyric, notation_text: oldNotation || null } : l
+    ))
+  }
+
+  async function handleDeleteLine(line) {
+    if (!window.confirm(`Delete "${line.lyric_text}"? This cannot be undone.`)) return
+
+    const { error: deleteError } = await supabase.from('lines').delete().eq('line_id', line.line_id)
+    if (deleteError) { setError(deleteError.message); return }
+
+    const remaining = lines.filter(l => l.line_id !== line.line_id)
+    const renumbered = remaining.map((l, i) => ({ ...l, line_number: i + 1 }))
+
+    // Re-number lines in DB for any that changed
+    const toUpdate = renumbered.filter((l, i) => l.line_number !== remaining[i]?.line_number)
+    await Promise.all(
+      toUpdate.map(l => supabase.from('lines').update({ line_number: l.line_number }).eq('line_id', l.line_id))
+    )
+
+    setLines(renumbered)
+  }
+
+  async function handleMoveLine(lineId, direction) {
+    const sorted = [...lines].sort((a, b) => a.line_number - b.line_number)
+    const idx = sorted.findIndex(l => l.line_id === lineId)
+    if (idx === -1) return
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= sorted.length) return
+
+    const lineA = sorted[idx]
+    const lineB = sorted[targetIdx]
+    const numA = lineA.line_number
+    const numB = lineB.line_number
+
+    setLines(prev => prev.map(l => {
+      if (l.line_id === lineA.line_id) return { ...l, line_number: numB }
+      if (l.line_id === lineB.line_id) return { ...l, line_number: numA }
+      return l
+    }))
+
+    await Promise.all([
+      supabase.from('lines').update({ line_number: numB }).eq('line_id', lineA.line_id),
+      supabase.from('lines').update({ line_number: numA }).eq('line_id', lineB.line_id),
+    ])
+  }
+
+  // Group lines by section, sorted by line_number
+  const sortedLines = [...lines].sort((a, b) => a.line_number - b.line_number)
+  const groupedLines = sortedLines.reduce((acc, line) => {
     const section = line.section_label || 'General'
     if (!acc[section]) acc[section] = []
     acc[section].push(line)
@@ -277,8 +285,19 @@ export default function SongBuilder({ song }) {
       <p className="text-sm text-gray-400 mb-6">Paste lyrics section by section</p>
 
       {error && (
-        <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
-          {error}
+        <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>
+      )}
+
+      {/* Undo toast */}
+      {undoState && (
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+          <p className="text-xs text-amber-800">Line saved.</p>
+          <button
+            onClick={handleUndoEdit}
+            className="text-xs font-semibold text-amber-700 hover:underline ml-4"
+          >
+            Undo
+          </button>
         </div>
       )}
 
@@ -290,7 +309,7 @@ export default function SongBuilder({ song }) {
             <select
               value={sectionLabel}
               onChange={e => setSectionLabel(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             >
               {SECTIONS.map(s => (
                 <option key={s} value={s}>{s}</option>
@@ -307,7 +326,7 @@ export default function SongBuilder({ song }) {
                 value={customSection}
                 onChange={e => setCustomSection(e.target.value)}
                 placeholder="e.g. Interlude"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
               />
             </div>
           )}
@@ -322,7 +341,7 @@ export default function SongBuilder({ song }) {
             onChange={e => setLyricBlob(e.target.value)}
             placeholder={`e.g.\nTum hi ho\nAb tum hi ho\nZindagi ab tum hi ho`}
             rows={5}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none"
           />
         </div>
 
@@ -335,14 +354,14 @@ export default function SongBuilder({ song }) {
             value={notationText}
             onChange={e => setNotationText(e.target.value)}
             placeholder="e.g. C G Am F"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
           />
         </div>
 
         <button
           onClick={handleAddSection}
           disabled={loading || !lyricBlob.trim()}
-          className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+          className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
         >
           {loading ? 'Adding...' : '+ Add Section'}
         </button>
@@ -350,23 +369,28 @@ export default function SongBuilder({ song }) {
 
       {/* Song display */}
       {fetching ? (
-        <p className="text-sm text-gray-400">Loading lines...</p>
+        <div className="flex items-center justify-center py-8">
+          <div className="w-6 h-6 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+        </div>
       ) : lines.length === 0 ? (
         <p className="text-sm text-gray-400">No lines added yet. Paste a section above to get started.</p>
       ) : (
         <div className="space-y-6">
           {Object.entries(groupedLines).map(([section, sectionLines]) => (
             <div key={section}>
-              <h3 className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-2">
                 {section}
               </h3>
               <div className="bg-gray-50 rounded-xl px-4">
-                {sectionLines.map(line => (
+                {sectionLines.map((line, idx) => (
                   <LineItem
                     key={line.line_id}
                     line={line}
                     lineNumber={line.line_number}
                     onSave={handleEditLine}
+                    onDelete={() => handleDeleteLine(line)}
+                    onMoveUp={idx > 0 || sortedLines.indexOf(line) > 0 ? () => handleMoveLine(line.line_id, 'up') : null}
+                    onMoveDown={sortedLines.indexOf(line) < sortedLines.length - 1 ? () => handleMoveLine(line.line_id, 'down') : null}
                     wordNotes={wordNotes[line.line_id] || {}}
                     onNoteChange={(wordIndex, noteText) => handleNoteChange(line.line_id, wordIndex, noteText)}
                   />
