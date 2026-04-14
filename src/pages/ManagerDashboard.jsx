@@ -83,6 +83,7 @@ export default function ManagerDashboard() {
       setLines([])
       setMembers([])
       fetchSongs(selectedGroup.group_id)
+      fetchMembers(selectedGroup.group_id)
     }
   }, [selectedGroup?.group_id])
 
@@ -114,6 +115,20 @@ export default function ManagerDashboard() {
       .order('created_at', { ascending: true })
 
     if (!error) setSongs(data)
+  }
+
+  async function fetchMembers(groupId) {
+    const { data: memberData } = await supabase
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId)
+    if (!memberData?.length) return
+
+    const { data: userData } = await supabase
+      .from('users')
+      .select('user_id, name, role')
+      .in('user_id', memberData.map(m => m.user_id))
+    if (userData) setMembers(userData)
   }
 
   async function fetchLines(songId) {

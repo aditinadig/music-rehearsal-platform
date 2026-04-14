@@ -29,7 +29,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
   }
 
   async function handleSave() {
-    if (!lyric.trim()) return
+    if (!lyric.trim() && !notation.trim()) return
     setSaving(true)
     try {
       await onSave(line, lyric.trim(), notation.trim())
@@ -93,7 +93,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
             <div className="flex gap-2">
               <button
                 onClick={handleSave}
-                disabled={saving || !lyric.trim()}
+                disabled={saving || (!lyric.trim() && !notation.trim())}
                 className="text-xs bg-violet-600 text-white px-3 py-1 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition"
               >
                 {saving ? 'Saving...' : 'Save'}
@@ -109,7 +109,8 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
   }
 
   // ── View mode ──────────────────────────────────────────────────────────
-  const words = line.lyric_text.split(' ')
+  const isInstrumental = !line.lyric_text?.trim()
+  const words = isInstrumental ? [] : line.lyric_text.split(' ')
 
   return (
     <div className="py-3 border-b border-gray-100 last:border-0">
@@ -117,41 +118,53 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
         <span className="text-xs text-gray-400 mt-1 w-5 shrink-0">{lineNumber}</span>
 
         <div className="flex-1">
-          {/* Word-by-word with notes above */}
-          <div className="flex flex-wrap items-end gap-x-1.5 gap-y-3">
-            {words.map((word, i) => {
-              const note = wordNotes?.[i]
-              const isActive = activeWordIndex === i
-              return (
-                <span key={i} className="flex flex-col items-center">
-                  <span className={`text-xs font-mono font-semibold mb-0.5 ${note ? 'text-teal-500' : 'opacity-0 select-none pointer-events-none'}`}>
-                    {note || '·'}
-                  </span>
-                  <button
-                    onClick={() => handleWordClick(i, note)}
-                    title={note ? `Note: ${note} — click to edit` : 'Click to add a note'}
-                    className={`text-sm rounded px-0.5 transition leading-snug
-                      ${isActive
-                        ? 'bg-violet-100 text-violet-700 outline outline-1 outline-violet-400'
-                        : note
-                          ? 'text-gray-800 hover:bg-teal-50'
-                          : 'text-gray-800 hover:bg-violet-50 hover:text-violet-600'
-                      }`}
-                  >
-                    {word}
-                  </button>
-                </span>
-              )
-            })}
-          </div>
+          {isInstrumental ? (
+            /* Instrumental / BGM line — notation only */
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">Instrumental</span>
+              {line.notation_text && (
+                <span className="text-sm font-mono text-teal-700">{line.notation_text}</span>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Word-by-word with notes above */}
+              <div className="flex flex-wrap items-end gap-x-1.5 gap-y-3">
+                {words.map((word, i) => {
+                  const note = wordNotes?.[i]
+                  const isActive = activeWordIndex === i
+                  return (
+                    <span key={i} className="flex flex-col items-center">
+                      <span className={`text-xs font-mono font-semibold mb-0.5 ${note ? 'text-teal-500' : 'opacity-0 select-none pointer-events-none'}`}>
+                        {note || '·'}
+                      </span>
+                      <button
+                        onClick={() => handleWordClick(i, note)}
+                        title={note ? `Note: ${note} — click to edit` : 'Click to add a note'}
+                        className={`text-sm rounded px-0.5 transition leading-snug
+                          ${isActive
+                            ? 'bg-violet-100 text-violet-700 outline outline-1 outline-violet-400'
+                            : note
+                              ? 'text-gray-800 hover:bg-teal-50'
+                              : 'text-gray-800 hover:bg-violet-50 hover:text-violet-600'
+                          }`}
+                      >
+                        {word}
+                      </button>
+                    </span>
+                  )
+                })}
+              </div>
 
-          {/* Line-level notation */}
-          {line.notation_text && (
-            <p className="text-xs text-violet-500 mt-1">{line.notation_text}</p>
+              {/* Line-level notation */}
+              {line.notation_text && (
+                <p className="text-xs text-violet-500 mt-1">{line.notation_text}</p>
+              )}
+            </>
           )}
 
-          {/* Inline note editor */}
-          {activeWordIndex !== null && (
+          {/* Inline note editor (only for lines with lyrics) */}
+          {!isInstrumental && activeWordIndex !== null && (
             <div className="mt-2 flex flex-wrap gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
               <span className="text-xs text-gray-500 shrink-0">
                 Note for <span className="font-semibold text-gray-700">"{words[activeWordIndex]}"</span>:

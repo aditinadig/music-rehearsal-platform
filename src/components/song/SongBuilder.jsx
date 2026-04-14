@@ -80,8 +80,6 @@ export default function SongBuilder({ song }) {
   }
 
   async function handleNoteChange(lineId, wordIndex, noteText) {
-    const previousNote = wordNotes[lineId]?.[wordIndex] || ''
-
     const { error: deleteError } = await supabase
       .from('word_notes')
       .delete()
@@ -100,11 +98,6 @@ export default function SongBuilder({ song }) {
       if (insertError) { setError(insertError.message || 'Unable to save this note.'); throw insertError }
     }
 
-    if (previousNote !== noteText) {
-      const affectedUsers = await fetchAssignedUsers(lineId, 'musician')
-      await writeChangeLog(lineId, 'note_edited', previousNote || null, noteText || 'Note cleared', affectedUsers)
-    }
-
     setWordNotes(prev => {
       const lineNotes = { ...(prev[lineId] || {}) }
       if (noteText) lineNotes[wordIndex] = noteText
@@ -114,27 +107,40 @@ export default function SongBuilder({ song }) {
   }
 
   async function handleAddSection() {
-    if (!lyricBlob.trim()) return
+    const hasLyrics = lyricBlob.trim()
+    const hasNotation = notationText.trim()
+    if (!hasLyrics && !hasNotation) return
     setLoading(true)
     setError('')
 
     const label = sectionLabel === 'Custom' ? customSection : sectionLabel
-    const rawLines = lyricBlob.split('\n').map(l => l.trim()).filter(l => l.length > 0)
 
-    if (rawLines.length === 0) {
-      setError('No valid lines found.')
-      setLoading(false)
-      return
+    let rows
+    if (hasLyrics) {
+      const rawLines = lyricBlob.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+      if (rawLines.length === 0) {
+        setError('No valid lines found.')
+        setLoading(false)
+        return
+      }
+      const startingLineNumber = lines.length + 1
+      rows = rawLines.map((lyric, index) => ({
+        song_id: song.song_id,
+        section_label: label,
+        line_number: startingLineNumber + index,
+        lyric_text: lyric,
+        notation_text: notationText || null
+      }))
+    } else {
+      // Notation-only line (BGM / instrumental interval)
+      rows = [{
+        song_id: song.song_id,
+        section_label: label,
+        line_number: lines.length + 1,
+        lyric_text: '',
+        notation_text: notationText
+      }]
     }
-
-    const startingLineNumber = lines.length + 1
-    const rows = rawLines.map((lyric, index) => ({
-      song_id: song.song_id,
-      section_label: label,
-      line_number: startingLineNumber + index,
-      lyric_text: lyric,
-      notation_text: notationText || null
-    }))
 
     const { data, error: insertError } = await supabase.from('lines').insert(rows).select()
 
@@ -229,7 +235,8 @@ export default function SongBuilder({ song }) {
   }
 
   async function handleDeleteLine(line) {
-    if (!window.confirm(`Delete "${line.lyric_text}"? This cannot be undone.`)) return
+    const label = line.lyric_text?.trim() || line.notation_text || 'this instrumental line'
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return
 
     const { error: deleteError } = await supabase.from('lines').delete().eq('line_id', line.line_id)
     if (deleteError) { setError(deleteError.message); return }
@@ -334,7 +341,7 @@ export default function SongBuilder({ song }) {
 
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Lyrics <span className="text-gray-400">(paste the whole section, each line on a new line)</span>
+            Lyrics <span className="text-gray-400">(one line per row — leave blank for a BGM / instrumental interval)</span>
           </label>
           <textarea
             value={lyricBlob}
@@ -347,7 +354,7 @@ export default function SongBuilder({ song }) {
 
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Notation / Chords <span className="text-gray-400">(optional, applies to whole section)</span>
+            Notation / Chords <span className="text-gray-400">(optional for lyric sections — required if no lyrics)</span>
           </label>
           <input
             type="text"
@@ -360,7 +367,7 @@ export default function SongBuilder({ song }) {
 
         <button
           onClick={handleAddSection}
-          disabled={loading || !lyricBlob.trim()}
+          disabled={loading || (!lyricBlob.trim() && !notationText.trim())}
           className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
         >
           {loading ? 'Adding...' : '+ Add Section'}

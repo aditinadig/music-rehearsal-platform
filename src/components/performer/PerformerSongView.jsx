@@ -668,7 +668,19 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                         id={`line-${line.line_id}`}
                         className={`px-4 py-2.5 border-b ${cardBorder} last:border-b-0 ${isAssigned ? assignedLineBg : ''}`}
                       >
-                        {showNotation ? (
+                        {!line.lyric_text?.trim() ? (
+                          /* Instrumental / BGM line */
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${dk ? 'bg-teal-900/40 text-teal-400' : 'bg-teal-50 text-teal-600'}`}>
+                              Instrumental
+                            </span>
+                            {line.notation_text && (
+                              <span className={`${notesSizeClass} font-mono font-semibold ${dk ? 'text-teal-400' : 'text-teal-700'}`}>
+                                {line.notation_text}
+                              </span>
+                            )}
+                          </div>
+                        ) : showNotation ? (
                           <div className="flex flex-wrap items-end gap-x-1.5 gap-y-3">
                             {line.lyric_text.split(' ').map((word, index) => {
                               const note = wordNotesMap[line.line_id]?.[index]
