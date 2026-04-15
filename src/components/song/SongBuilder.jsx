@@ -5,7 +5,7 @@ import LineItem from './LineItem'
 
 const SECTIONS = ['Intro', 'Verse 1', 'Verse 2', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro']
 
-export default function SongBuilder({ song }) {
+export default function SongBuilder({ song, onLinesUpdated }) {
   const { user } = useAuth()
   const [lines, setLines] = useState([])
   const [wordNotes, setWordNotes] = useState({})
@@ -151,6 +151,7 @@ export default function SongBuilder({ song }) {
     }
 
     setLines(prev => [...prev, ...data])
+    onLinesUpdated?.()
     setLyricBlob('')
     setNotationText('')
     setLoading(false)
@@ -251,6 +252,7 @@ export default function SongBuilder({ song }) {
     )
 
     setLines(renumbered)
+    onLinesUpdated?.()
   }
 
   async function handleMoveLine(lineId, direction) {
@@ -275,6 +277,7 @@ export default function SongBuilder({ song }) {
       supabase.from('lines').update({ line_number: numB }).eq('line_id', lineA.line_id),
       supabase.from('lines').update({ line_number: numA }).eq('line_id', lineB.line_id),
     ])
+    onLinesUpdated?.()
   }
 
   // Group lines by section, sorted by line_number
