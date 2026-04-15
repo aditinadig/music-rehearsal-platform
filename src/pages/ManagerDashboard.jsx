@@ -161,6 +161,28 @@ export default function ManagerDashboard() {
     if (!window.confirm(`Delete "${song.title}"? All lines and assignments will be removed.`)) return
     setDeletingSongId(song.song_id)
 
+    // Fetch all line IDs for this song
+    const { data: lineRows } = await supabase
+      .from('lines').select('line_id').eq('song_id', song.song_id)
+    const lineIds = (lineRows || []).map(l => l.line_id)
+
+    if (lineIds.length > 0) {
+      // Fetch change_log IDs for these lines (needed to delete acknowledgments)
+      const { data: changeRows } = await supabase
+        .from('change_log').select('change_id').in('line_id', lineIds)
+      const changeIds = (changeRows || []).map(c => c.change_id)
+
+      // Delete in dependency order
+      if (changeIds.length > 0) {
+        await supabase.from('acknowledgments').delete().in('change_id', changeIds)
+        await supabase.from('change_log').delete().in('change_id', changeIds)
+      }
+      await supabase.from('assignments').delete().in('line_id', lineIds)
+      await supabase.from('word_notes').delete().in('line_id', lineIds)
+      await supabase.from('cues').delete().in('line_id', lineIds)
+      await supabase.from('lines').delete().in('line_id', lineIds)
+    }
+
     const { error } = await supabase.from('songs').delete().eq('song_id', song.song_id)
     setDeletingSongId(null)
     if (error) return
