@@ -4,8 +4,8 @@ import PerformerSongView from '../components/performer/PerformerSongView'
 
 const terracotta = '#E35336'
 const ink = '#12100A'
-const roleBg = '#DBEAFE'
-const roleText = '#2563EB'
+const roleBg = '#F3EEF5'
+const roleText = '#6F5D78'
 
 export default function MusicianDashboard() {
   const { profile, logout } = useAuth()
@@ -33,27 +33,15 @@ export default function MusicianDashboard() {
           </button>
         </div>
       </div>
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-4 sm:py-6 space-y-4">
-        <div className={`rounded-3xl border overflow-hidden shadow-sm ${darkDisplay ? 'bg-gray-900 border-gray-700' : 'bg-white border-blue-100'}`}>
-          <div className={`p-5 sm:p-6 ${darkDisplay ? '' : 'bg-gradient-to-br from-white via-white to-blue-50'}`}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: darkDisplay ? '#93c5fd' : roleText }}>Musician portal</p>
-                <h1 className={`mt-2 text-2xl font-semibold ${darkDisplay ? 'text-white' : 'text-gray-900'}`}>Cues, chords, and timing in one view.</h1>
-                <p className={`mt-2 max-w-xl text-sm leading-6 ${darkDisplay ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Follow notation, jump between assigned sections, and keep stage mode readable at performance distance.
+      <div className="w-full px-4 py-5 sm:px-8 lg:px-10 xl:px-12 sm:py-7 space-y-5">
+        <div className="px-1 py-2">
+          <div>
+            <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A2B0E]">Musician portal</p>
+                <h1 className="mt-2 text-2xl font-semibold text-gray-950">Cues, chords, and timing in one view.</h1>
+                <p className="mt-2 w-full text-sm leading-6 text-[#5B6472]">
+                  Choose a group first, then select a song to rehearse its assigned notation, cues, BPM, and scale.
                 </p>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {['Cues', 'Chords', 'Stage'].map((label, i) => (
-                  <div key={label} className={`rounded-xl border px-3 py-2 ${darkDisplay ? 'border-gray-700 bg-gray-800' : 'border-blue-100 bg-white'}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-[0.12em] ${darkDisplay ? 'text-gray-400' : 'text-gray-400'}`}>{label}</p>
-                    <p className={`mt-1 text-sm font-semibold ${i === 0 ? '' : darkDisplay ? 'text-gray-200' : 'text-gray-800'}`} style={i === 0 ? { color: darkDisplay ? '#93c5fd' : roleText } : {}}>
-                      {i === 0 ? 'entry' : i === 1 ? 'inline' : 'dark'}
-                    </p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>

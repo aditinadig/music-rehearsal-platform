@@ -56,7 +56,7 @@ export default function InviteMember({ groupId, onMemberAdded }) {
             Add singers and musicians by email. They must have already registered.
           </p>
         </div>
-        <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-lg shadow-sm">👥</span>
+        <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-xs font-bold text-orange-700 shadow-sm">TEAM</span>
       </div>
 
       {error && (

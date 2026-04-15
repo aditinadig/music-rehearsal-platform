@@ -17,9 +17,9 @@ const ROLES = [
 ]
 
 const ROLE_STYLE = {
-  singer: { background: '#FCE7F3', color: '#DB2777' },
-  musician: { background: '#DBEAFE', color: '#2563EB' },
-  manager: { background: '#F3E8FF', color: '#9333EA' },
+  singer: { background: '#FDEBE6', color: '#B43A22' },
+  musician: { background: '#F3EEF5', color: '#6F5D78' },
+  manager: { background: '#FFF4EA', color: '#8A2B0E' },
 }
 
 export default function Register() {
@@ -173,7 +173,7 @@ export default function Register() {
                       value={r.value}
                       checked={role === r.value}
                       onChange={() => setRole(r.value)}
-                      className="mt-0.5 accent-violet-600"
+                      className="mt-0.5 accent-[#E35336]"
                     />
                     <div>
                       <div className="flex items-center gap-1.5">

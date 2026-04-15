@@ -59,12 +59,16 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   const [showFloatingBadge, setShowFloatingBadge] = useState(false)
   const [groups, setGroups] = useState([])
   const [groupIds, setGroupIds] = useState([])
+  const [selectedGroup, setSelectedGroup] = useState(null)
 
   // Display modes — persisted in localStorage
   const [stageMode, setStageMode] = useState(() => localStorage.getItem('performer_stageMode') === 'true')
   const [darkDisplay, setDarkDisplay] = useState(() => localStorage.getItem('performer_darkDisplay') === 'true')
 
   const updatesCardRef = useRef(null)
+  const selectedGroupSongs = selectedGroup
+    ? songs.filter(song => song.group_id === selectedGroup.group_id)
+    : []
 
   // Persist preferences
   useEffect(() => { localStorage.setItem('performer_fontSize', fontSize) }, [fontSize])
@@ -93,6 +97,17 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   }, [pendingAcks.length])
 
   useEffect(() => { init() }, [])
+
+  useEffect(() => {
+    if (!selectedGroup) {
+      setSelectedSong(null)
+      return
+    }
+    setSelectedSong(current => {
+      if (current?.group_id === selectedGroup.group_id) return current
+      return selectedGroupSongs[0] || null
+    })
+  }, [selectedGroup?.group_id, songs])
 
   useEffect(() => {
     if (selectedSong) {
@@ -163,7 +178,6 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
           const group = groups.find(g => g.group_id === payload.new.group_id)
           const nextSong = { ...payload.new, group_name: group?.name }
           setSongs(prev => [...prev, nextSong])
-          setSelectedSong(sel => sel || nextSong)
         })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -187,7 +201,9 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   async function init() {
     setLoading(true)
     const { data: memberships } = await supabase
-      .from('group_members').select('group_id').eq('user_id', user.id)
+      .from('group_members')
+      .select('group_id, groups(group_id, name)')
+      .eq('user_id', user.id)
     const ids = [...new Set((memberships || []).map(m => m.group_id).filter(Boolean))]
     if (ids.length === 0) { setLoading(false); return }
     setGroupIds(ids)
@@ -196,15 +212,25 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
       supabase.from('groups').select('group_id, name').in('group_id', ids),
       supabase.from('songs').select('*').in('group_id', ids).order('created_at', { ascending: true }),
     ])
-    const loadedGroups = groupData?.length
-      ? groupData
-      : ids.map(group_id => ({ group_id, name: 'Group' }))
+    const embeddedGroups = (memberships || [])
+      .map(m => {
+        const group = Array.isArray(m.groups) ? m.groups[0] : m.groups
+        return group?.name ? { group_id: m.group_id, name: group.name } : null
+      })
+      .filter(Boolean)
+    const groupNameByIdFromFetch = Object.fromEntries((groupData || []).map(g => [g.group_id, g.name]))
+    const groupNameByIdFromMembership = Object.fromEntries(embeddedGroups.map(g => [g.group_id, g.name]))
+    const loadedGroups = ids.map(group_id => ({
+      group_id,
+      name: groupNameByIdFromFetch[group_id] || groupNameByIdFromMembership[group_id] || 'Group'
+    }))
     const groupNameById = Object.fromEntries(loadedGroups.map(g => [g.group_id, g.name]))
     const loadedSongs = (songData || []).map(song => ({ ...song, group_name: groupNameById[song.group_id] }))
 
     setGroups(loadedGroups)
+    setSelectedGroup(loadedGroups[0] || null)
     setSongs(loadedSongs)
-    setSelectedSong(loadedSongs[0] || null)
+    setSelectedSong(loadedSongs.find(song => song.group_id === loadedGroups[0]?.group_id) || null)
     await fetchPendingAcks()
     setLoading(false)
   }
@@ -389,56 +415,128 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   const assignedLineText = dk ? 'text-[#FFD3AC] font-medium' : 'text-[#8A2B0E] font-medium'
   const unassignedLineText = dk ? 'text-gray-500' : 'text-gray-400'
   const stageUnassignedLineText = dk ? 'text-gray-700' : 'text-gray-300'
-  const cueBg = dk ? 'bg-amber-900/30 border-amber-800' : 'bg-amber-50 border-amber-100'
-  const cueText = dk ? 'text-amber-400' : 'text-amber-800'
+  const cueBg = dk ? 'bg-white border-white' : 'bg-black border-black'
+  const cueText = dk ? 'text-gray-900' : 'text-white'
+  const selectorShellClass = 'border-[#F0D7C8] bg-[#FFF9F5]'
+  const selectorDividerClass = 'border-[#F0D7C8]'
+  const selectorLabelClass = 'text-[#8A2B0E]'
+  const groupActiveClass = 'border-[#8A2B0E] bg-[#8A2B0E] text-white shadow-sm'
+  const groupIdleClass = 'border-[#F0D7C8] bg-white text-gray-600 hover:border-[#8A2B0E] hover:text-[#8A2B0E]'
+  const songSelectClass = 'bg-white border-[#F0D7C8] text-gray-900 focus:ring-[#FFD3AC] focus:border-[#8A2B0E]'
+  const rehearsalPanelClass = 'border-[#F0D7C8] bg-white'
+  const sectionCountBadgeClass = dk
+    ? 'bg-[#4D3342] text-[#FFD3AC] border border-[#FFD3AC]/20'
+    : 'bg-[#FFF4EA] text-[#8A2B0E] border border-[#F0D7C8]'
+  const updatesCardClass = dk ? card : 'bg-[#FFF9F5] border-[#F0D7C8]'
+  const updatesBorderClass = dk ? cardBorder : 'border-[#F3E4DC]'
+  const updatesRowClass = dk ? 'hover:bg-gray-800/50' : 'bg-white hover:bg-[#FFF4EA]'
+  const updatesActiveTabClass = dk ? 'bg-[#FFD3AC] text-[#8A2B0E]' : 'bg-[#8A2B0E] text-white'
+  const updatesIdleTabClass = dk ? 'bg-gray-800 text-gray-400 hover:text-gray-200' : 'bg-white text-gray-500 hover:text-[#8A2B0E]'
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="w-6 h-6 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-[#E35336] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   if (songs.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+      <div className={`rounded-3xl border p-8 text-center shadow-sm ${dk ? 'bg-gray-900 border-gray-700' : 'bg-white border-orange-100'}`}>
+        {groups.length > 1 && (
+          <div className="mb-5 flex flex-wrap justify-center gap-2">
+            {groups.map(group => (
+              <button
+                key={group.group_id}
+                onClick={() => setSelectedGroup(group)}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${selectedGroup?.group_id === group.group_id
+                  ? 'border-[#8A2B0E] bg-[#8A2B0E] text-white'
+                  : dk ? 'border-gray-700 bg-gray-800 text-gray-300' : 'border-gray-200 bg-gray-50 text-gray-600'}`}
+              >
+                {group.name}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-sm text-gray-400">No songs in your groups yet. Check back once your manager adds some.</p>
       </div>
     )
   }
 
   return (
-    <div className={`space-y-3 transition-colors duration-200 ${dk ? 'bg-gray-950 p-3 sm:p-4 rounded-3xl' : ''}`}>
+    <div className={`space-y-4 transition-colors duration-200 ${dk ? 'bg-gray-950 p-3 sm:p-4 rounded-3xl' : ''}`}>
 
-      {/* Song title + performers */}
+      {/* Group and song selectors */}
       {!stageMode && (
-        <div className="px-1 pb-1">
-          {songs.length > 1 ? (
-            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${dk ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-              <svg className={`w-3.5 h-3.5 shrink-0 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              <div className="relative">
-                <select
-                  value={selectedSong?.song_id || ''}
-                  onChange={e => setSelectedSong(songs.find(s => s.song_id === e.target.value))}
-                  className={`appearance-none text-sm font-semibold pr-5 bg-transparent border-none cursor-pointer focus:outline-none ${headingText}`}
-                >
-                  {songs.map(s => <option key={s.song_id} value={s.song_id}>{songLabel(s, groups.length > 1)}</option>)}
-                </select>
-                <ChevronDown className={`absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${mutedText}`} />
+        <div className={`rounded-2xl border px-3 pb-3 pt-4 shadow-sm ${dk ? 'bg-gray-900 border-gray-700' : 'bg-white border-[#F0D7C8]'}`}>
+          <div className={`grid overflow-hidden rounded-xl border lg:grid-cols-[minmax(0,0.95fr)_minmax(280px,0.9fr)] ${selectorShellClass}`}>
+            <div className="divide-y divide-[#F0D7C8]">
+              <div className="flex flex-col gap-2 px-4 pb-3 pt-4 sm:flex-row sm:items-center sm:gap-4">
+                <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${selectorLabelClass}`}>
+                  Group
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {groups.map(group => (
+                    <button
+                      key={group.group_id}
+                      onClick={() => setSelectedGroup(group)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${selectedGroup?.group_id === group.group_id
+                        ? groupActiveClass
+                        : groupIdleClass}`}
+                    >
+                      {group.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={`flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 ${selectorDividerClass}`}>
+                <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${selectorLabelClass}`}>Song</p>
+                {selectedGroupSongs.length > 0 ? (
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedSong?.song_id || ''}
+                      onChange={e => setSelectedSong(selectedGroupSongs.find(s => s.song_id === e.target.value))}
+                      className={`w-full appearance-none rounded-lg border px-3 py-2 pr-8 text-sm font-semibold cursor-pointer focus:outline-none focus:ring-2 ${songSelectClass}`}
+                    >
+                      {selectedGroupSongs.map(s => <option key={s.song_id} value={s.song_id}>{s.title}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-gray-400" />
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-[#F0D7C8] bg-white px-3 py-2 text-sm text-gray-500">
+                    No songs in this group yet.
+                  </p>
+                )}
               </div>
             </div>
-          ) : (
-            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${dk ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-              <svg className={`w-3.5 h-3.5 shrink-0 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-              <span className={`text-sm font-semibold ${headingText}`}>{songLabel(selectedSong, groups.length > 1)}</span>
+
+            <div className={`border-t px-4 py-3 lg:border-l lg:border-t-0 ${rehearsalPanelClass}`}>
+              <div className="flex h-full flex-col justify-center gap-2">
+                <div>
+                  <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${selectorLabelClass}`}>Current rehearsal</p>
+                  <h2 className="mt-1 text-xl font-semibold text-gray-950">
+                    {selectedSong ? selectedSong.title : 'Select a song'}
+                  </h2>
+                </div>
+                {selectedSong && (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSong.bpm && (
+                      <span className="rounded-full border border-[#FFD3AC]/20 bg-[#8A2B0E] px-3 py-1 text-xs font-semibold text-white">
+                        BPM {selectedSong.bpm}
+                      </span>
+                    )}
+                    {selectedSong.scale && (
+                      <span className="rounded-full border border-[#FFD3AC]/20 bg-[#8A2B0E] px-3 py-1 text-xs font-semibold text-white">
+                        Scale {selectedSong.scale}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {memberNames && <p className="text-xs text-gray-500">Group members: {memberNames}</p>}
+              </div>
             </div>
-          )}
-          {memberNames && <p className={`text-xs mt-1.5 pl-1 ${mutedText}`}>{memberNames}</p>}
+          </div>
         </div>
       )}
 
@@ -450,7 +548,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
             {assignedLineIds.size > 0 && (
               <button
                 onClick={goToNextAssignedLine}
-                className="text-xs font-semibold px-3 py-2.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition min-h-[44px]"
+                className="text-xs font-semibold px-3 py-2.5 rounded-lg bg-[#8A2B0E] text-white hover:bg-[#6F220B] transition min-h-[44px]"
               >
                 Next Line →
               </button>
@@ -467,22 +565,29 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
 
       {/* Updates card — hidden in stage mode */}
       {hasUpdates && !stageMode && (
-        <div ref={updatesCardRef} className={`rounded-2xl border overflow-hidden ${card}`}>
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2">
+        <div ref={updatesCardRef} className={`rounded-2xl border overflow-hidden shadow-sm ${updatesCardClass}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`text-sm font-semibold ${headingText}`}>Updates</span>
               {pendingAcks.length > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                <span className="bg-[#E35336] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                   {pendingAcks.length}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              {!showHistory && pendingAcks.length > 1 && (
-                <button onClick={confirmAllAcks} className="text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-2 rounded-lg transition min-h-[40px]">
-                  Confirm All
-                </button>
-              )}
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => setShowHistory(false)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${!showHistory ? updatesActiveTabClass : updatesIdleTabClass}`}
+              >
+                Pending{pendingAcks.length > 0 ? ` (${pendingAcks.length})` : ''}
+              </button>
+              <button
+                onClick={() => setShowHistory(true)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${showHistory ? updatesActiveTabClass : updatesIdleTabClass}`}
+              >
+                History
+              </button>
               <button onClick={() => setUpdatesCollapsed(v => !v)} className={`${mutedText} hover:text-gray-600 transition p-2`}>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${updatesCollapsed ? '' : 'rotate-180'}`} />
               </button>
@@ -491,26 +596,6 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
 
           {!updatesCollapsed && (
             <>
-              {/* Pending / History tabs */}
-              <div className={`flex border-b ${cardBorder}`}>
-                <button
-                  onClick={() => setShowHistory(false)}
-                  className={`flex-1 py-2.5 text-xs font-semibold transition border-b-2 -mb-px ${!showHistory
-                    ? (dk ? 'border-[#FFD3AC] text-[#FFD3AC]' : 'border-violet-600 text-violet-600')
-                    : `border-transparent ${mutedText} hover:${dk ? 'text-gray-400' : 'text-gray-600'}`}`}
-                >
-                  Pending{pendingAcks.length > 0 ? ` (${pendingAcks.length})` : ''}
-                </button>
-                <button
-                  onClick={() => setShowHistory(true)}
-                  className={`flex-1 py-2.5 text-xs font-semibold transition border-b-2 -mb-px ${showHistory
-                    ? (dk ? 'border-[#FFD3AC] text-[#FFD3AC]' : 'border-violet-600 text-violet-600')
-                    : `border-transparent ${mutedText} hover:${dk ? 'text-gray-400' : 'text-gray-600'}`}`}
-                >
-                  History
-                </button>
-              </div>
-
               {!showHistory && (
                 <div>
                   {pendingAcks.length === 0 ? (
@@ -522,18 +607,18 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                       const isExpanded = expandedUpdateIds.has(ack.ack_id)
                       const displayText = renderChangeSummary(change) || CHANGE_LABELS[change?.change_type] || change?.change_type
                       return (
-                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2 border-b ${cardBorder} last:border-b-0 transition-colors duration-300 ${isJustConfirmed ? 'bg-green-50' : ''}`}>
-                          <div className={`w-1 self-stretch rounded-full shrink-0 mt-1 ${isJustConfirmed ? 'bg-green-400' : 'bg-red-400'}`} />
+                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2.5 border-b ${updatesBorderClass} last:border-b-0 transition-colors duration-300 ${isJustConfirmed ? 'bg-green-50' : updatesRowClass}`}>
+                          <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${isJustConfirmed ? 'bg-green-500' : 'bg-[#E35336]'}`} />
                           <button
                             onClick={() => toggleUpdateExpanded(ack.ack_id)}
-                            className={`flex-1 min-w-0 text-sm text-left break-words ${isExpanded ? '' : 'line-clamp-2'} ${dk ? 'text-gray-200' : 'text-gray-800'}`}
+                            className={`flex-1 min-w-0 text-sm text-left leading-5 break-words ${isExpanded ? '' : 'line-clamp-2'} ${dk ? 'text-gray-200' : 'text-gray-800'}`}
                           >
                             {displayText}
                           </button>
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               onClick={() => scrollToLine(change?.line_id)}
-                              className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[36px] min-w-[36px] flex items-center justify-center`}
+                              className={`${mutedText} hover:text-gray-600 p-1.5 rounded-lg transition min-h-[30px] min-w-[30px] flex items-center justify-center`}
                               title="Jump to line"
                             >
                               <SearchIcon />
@@ -544,7 +629,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                               <button
                                 onClick={() => confirmAck(ack.ack_id)}
                                 disabled={confirmingId === ack.ack_id}
-                                className={`text-xs font-semibold px-3 py-2 rounded-lg transition disabled:opacity-40 min-h-[36px] ${dk ? 'bg-gray-700 border border-gray-600 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'}`}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-40 min-h-[30px] ${dk ? 'bg-emerald-600 text-white hover:bg-emerald-500' : 'bg-emerald-700 text-white hover:bg-emerald-800'}`}
                               >
                                 {confirmingId === ack.ack_id ? '...' : 'Confirm'}
                               </button>
@@ -567,17 +652,17 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                       const isExpanded = expandedUpdateIds.has(ack.ack_id)
                       const displayText = renderChangeSummary(change) || CHANGE_LABELS[change?.change_type] || change?.change_type
                       return (
-                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2 border-b ${cardBorder} last:border-b-0`}>
-                          <div className="w-1 self-stretch bg-blue-300 rounded-full shrink-0 mt-1" />
+                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2.5 border-b ${updatesBorderClass} last:border-b-0 ${updatesRowClass}`}>
+                          <div className="h-2.5 w-2.5 rounded-full bg-[#C9B8AE] shrink-0" />
                           <button
                             onClick={() => toggleUpdateExpanded(ack.ack_id)}
-                            className={`flex-1 min-w-0 text-sm text-left break-words ${isExpanded ? '' : 'line-clamp-2'} ${dk ? 'text-gray-300' : 'text-gray-700'}`}
+                            className={`flex-1 min-w-0 text-sm text-left leading-5 break-words ${isExpanded ? '' : 'line-clamp-2'} ${dk ? 'text-gray-300' : 'text-gray-700'}`}
                           >
                             {displayText}
                           </button>
                           <button
                             onClick={() => scrollToLine(change?.line_id)}
-                            className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[36px] min-w-[36px] flex items-center justify-center`}
+                            className={`${mutedText} hover:text-gray-600 p-1.5 rounded-lg transition min-h-[30px] min-w-[30px] flex items-center justify-center`}
                             title="Jump to line"
                           >
                             <SearchIcon />
@@ -599,7 +684,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
           <button onClick={() => setYourSectionsCollapsed(v => !v)} className="w-full flex items-center justify-between px-4 py-3 min-h-[44px]">
             <div className="flex items-center gap-2">
               <span className={`text-sm font-semibold ${headingText}`}>Your Sections</span>
-              <span className="bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+              <span className={`text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 ${sectionCountBadgeClass}`}>
                 {mySections.length}
               </span>
             </div>
@@ -618,7 +703,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                   >
                     <p className={`text-xs font-semibold ${dk ? 'text-[#FFD3AC]' : 'text-[#8A2B0E]'}`}>
                       {section}
-                      <span className={`font-normal ml-1 ${dk ? 'text-[#9988A1]' : 'text-[#E35336]'}`}>
+                      <span className={`font-normal ml-1 ${dk ? 'text-[#FFD3AC]/80' : 'text-[#8A2B0E]/70'}`}>
                         — {count} line{count !== 1 ? 's' : ''}
                       </span>
                     </p>
@@ -634,7 +719,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
       )}
 
       {/* Controls bar — sticky */}
-      <div className={`sticky top-0 z-20 rounded-2xl border px-4 py-3 flex items-center gap-3 flex-wrap ${card}`}>
+      <div className={`sticky top-[64px] z-30 rounded-2xl border px-4 py-3 flex items-center gap-3 flex-wrap shadow-sm backdrop-blur ${card}`}>
         <span className={`text-xs font-semibold ${subText}`}>Controls</span>
 
         {/* Stage mode toggle */}
@@ -642,7 +727,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
           onClick={() => setStageMode(v => !v)}
           className={`text-xs font-semibold px-3 py-2.5 rounded-lg transition min-h-[44px] ${
             stageMode
-              ? 'bg-amber-500 text-white hover:bg-amber-600'
+              ? 'bg-[#8A2B0E] text-white hover:bg-[#6F220B]'
               : dk ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -654,24 +739,24 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
           <button
             onClick={() => setDarkDisplay(false)}
             title="Light display"
-            className={`w-8 h-8 rounded-full border-2 transition bg-white ${!dk ? 'border-violet-500' : 'border-gray-500 hover:border-gray-400'}`}
+            className={`w-8 h-8 rounded-full border-2 transition bg-white ${!dk ? 'border-[#8A2B0E]' : 'border-gray-500 hover:border-gray-400'}`}
           />
           <button
             onClick={() => setDarkDisplay(true)}
             title="Dark display"
-            className={`w-8 h-8 rounded-full border-2 transition bg-gray-900 ${dk ? 'border-violet-400' : 'border-gray-400 hover:border-gray-300'}`}
+            className={`w-8 h-8 rounded-full border-2 transition bg-gray-900 ${dk ? 'border-[#FFD3AC]' : 'border-gray-400 hover:border-gray-300'}`}
           />
         </div>
 
-        {/* Song picker in controls (when multiple songs) */}
-        {songs.length > 1 && (
+        {/* Song picker in controls (when multiple songs in the selected group) */}
+        {selectedGroupSongs.length > 1 && (
           <div className="relative">
             <select
               value={selectedSong?.song_id || ''}
-              onChange={e => setSelectedSong(songs.find(s => s.song_id === e.target.value))}
-              className={`text-xs border-2 rounded-lg pl-2 pr-6 py-2.5 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-400 min-h-[44px] ${dk ? 'bg-gray-800 border-gray-600 text-gray-200 hover:border-gray-500' : 'bg-white border-gray-300 text-gray-700 hover:border-violet-400'}`}
+              onChange={e => setSelectedSong(selectedGroupSongs.find(s => s.song_id === e.target.value))}
+              className={`text-xs border-2 rounded-lg pl-2 pr-6 py-2.5 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#FFD3AC] min-h-[44px] ${dk ? 'bg-gray-800 border-gray-600 text-gray-200 hover:border-gray-500' : 'bg-white border-gray-300 text-gray-700 hover:border-[#8A2B0E]'}`}
             >
-              {songs.map(s => <option key={s.song_id} value={s.song_id}>{songLabel(s, groups.length > 1)}</option>)}
+              {selectedGroupSongs.map(s => <option key={s.song_id} value={s.song_id}>{s.title}</option>)}
             </select>
             <ChevronDown className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${subText}`} />
           </div>
@@ -751,9 +836,13 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                       className={stageMode && hasAssignedLines && !isAssigned ? 'opacity-45' : ''}
                     >
                       {cue && (
-                        <div className={`flex items-center gap-2 border-b px-4 py-1.5 ${cueBg}`}>
-                          <span className={`text-xs ${dk ? 'text-amber-400' : 'text-amber-500'}`}>⚡</span>
-                          <span className={`text-xs font-medium ${cueText}`}>{cue}</span>
+                        <div className={`border-b px-4 py-2 ${cueBg}`}>
+                          <div className="flex items-start gap-3">
+                            <span className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${dk ? 'bg-gray-900 text-white' : 'bg-white text-gray-950'}`}>
+                              Cue
+                            </span>
+                            <span className={`text-sm font-semibold leading-5 ${cueText}`}>{cue}</span>
+                          </div>
                         </div>
                       )}
                       <div

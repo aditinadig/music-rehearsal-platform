@@ -279,8 +279,8 @@ function LiveMockup() {
               <span style={{ fontSize: '0.74rem', fontWeight: 600, color: ink }}>{l.singer}</span>
               <span style={{
                 fontSize: '0.58rem', padding: '0.08rem 0.45rem', borderRadius: '99px', fontWeight: 600,
-                background: l.role === 'Singer' ? '#FCE7F3' : '#DBEAFE',
-                color: l.role === 'Singer' ? '#DB2777' : '#2563EB',
+                background: l.role === 'Singer' ? '#FDEBE6' : '#F3EEF5',
+                color: l.role === 'Singer' ? '#B43A22' : '#6F5D78',
               }}>{l.role}</span>
             </div>
             <p style={{ fontSize: '0.73rem', color: l.mono ? olive : muted, fontFamily: l.mono ? 'monospace' : sans, margin: 0, lineHeight: 1.4 }}>{l.text}</p>
@@ -371,9 +371,9 @@ function Ticker() {
 
 function RehearsalMap() {
   const lanes = [
-    { role: 'Manager', label: 'Edit lyric', value: 'Verse 2 · line 04', color: '#9333EA', bg: '#F3E8FF' },
-    { role: 'Singer', label: 'Confirm change', value: 'Maya + Priya', color: '#DB2777', bg: '#FCE7F3' },
-    { role: 'Musician', label: 'Entry cue', value: 'after bar 8', color: '#2563EB', bg: '#DBEAFE' },
+    { role: 'Manager', label: 'Edit lyric', value: 'Verse 2 · line 04', color: '#8A2B0E', bg: '#FFF4EA' },
+    { role: 'Singer', label: 'Confirm change', value: 'Maya + Priya', color: '#B43A22', bg: '#FDEBE6' },
+    { role: 'Musician', label: 'Entry cue', value: 'after bar 8', color: '#6F5D78', bg: '#F3EEF5' },
   ]
 
   return (

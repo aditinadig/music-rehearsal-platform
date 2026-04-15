@@ -53,9 +53,9 @@ export default function MemberList({ groupId, onMembersLoaded }) {
   }
 
   const roleStyle = {
-    singer: { background: '#FCE7F3', color: '#DB2777' },
-    musician: { background: '#DBEAFE', color: '#2563EB' },
-    manager: { background: '#F3E8FF', color: '#9333EA' },
+    singer: { background: '#FDEBE6', color: '#B43A22' },
+    musician: { background: '#F3EEF5', color: '#6F5D78' },
+    manager: { background: '#FFF4EA', color: '#8A2B0E' },
   }
 
   if (loading) return (
@@ -72,6 +72,9 @@ export default function MemberList({ groupId, onMembersLoaded }) {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Roster</p>
           <h2 className="text-lg font-semibold text-gray-800">Group Members</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Check each member's role before assigning lyrics or notation.
+          </p>
         </div>
         <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-full px-3 py-1">
           {members.length} total

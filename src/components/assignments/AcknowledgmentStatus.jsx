@@ -123,6 +123,9 @@ export default function AcknowledgmentStatus({ songId }) {
       <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Update History</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          Track edits and assignment changes that performers need to confirm.
+        </p>
         <p className="text-sm text-gray-400">No changes have been pushed for this song yet.</p>
       </div>
     )
@@ -137,6 +140,9 @@ export default function AcknowledgmentStatus({ songId }) {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
           <h2 className="text-lg font-semibold text-gray-800">Update History</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Track edits and assignment changes that performers need to confirm.
+          </p>
         </div>
         <span
           className={`text-xs font-medium px-3 py-1 rounded-full ${

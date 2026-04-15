@@ -18,10 +18,10 @@ const muted = '#5F5550'
 const border = '#F0D7C8'
 const soft = '#FFF4EA'
 
-function EmptyState({ icon, title, hint, actionLabel, onAction }) {
+function EmptyState({ label = 'Empty', title, hint, actionLabel, onAction }) {
   return (
     <div className="bg-white rounded-2xl border p-8 flex flex-col items-center text-center gap-3 shadow-sm" style={{ borderColor: border }}>
-      {icon && <span className="text-3xl rounded-2xl px-4 py-3" style={{ background: soft }}>{icon}</span>}
+      <span className="text-[11px] font-bold uppercase tracking-[0.16em] rounded-lg px-3 py-2" style={{ background: soft, color: rust }}>{label}</span>
       <p className="text-sm font-semibold text-gray-800">{title}</p>
       {hint && <p className="text-xs text-gray-500 max-w-xs leading-5">{hint}</p>}
       {actionLabel && onAction && (
@@ -42,6 +42,15 @@ function StatCard({ label, value, hint, color = terracotta }) {
       </div>
       <p className="mt-2 text-2xl font-semibold" style={{ color: ink }}>{value}</p>
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  )
+}
+
+function WorkspaceNote({ title, children }) {
+  return (
+    <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700 mb-1">{title}</p>
+      <p className="text-sm leading-5 text-gray-600">{children}</p>
     </div>
   )
 }
@@ -75,10 +84,10 @@ function SongPreview({ lines }) {
 }
 
 const TABS = [
-  { id: 'songs', label: 'Songs', icon: '🎵' },
-  { id: 'members', label: 'Members', icon: '👥' },
-  { id: 'assignments', label: 'Assignments', icon: '🎼' },
-  { id: 'status', label: 'Status', icon: '📊' },
+  { id: 'songs', label: 'Songs' },
+  { id: 'members', label: 'Members' },
+  { id: 'assignments', label: 'Assignments' },
+  { id: 'status', label: 'Status' },
 ]
 
 export default function ManagerDashboard() {
@@ -176,6 +185,11 @@ export default function ManagerDashboard() {
     setSelectedSong(newSong)
   }
 
+  function handleSongUpdated(updatedSong) {
+    setSongs(prev => prev.map(song => song.song_id === updatedSong.song_id ? { ...song, ...updatedSong } : song))
+    setSelectedSong(prev => prev?.song_id === updatedSong.song_id ? { ...prev, ...updatedSong } : prev)
+  }
+
   function handleMembersLoaded(loadedMembers) {
     setMembers(loadedMembers)
   }
@@ -267,7 +281,7 @@ export default function ManagerDashboard() {
           <span className="hidden sm:block w-px h-5 bg-gray-200" />
           <span
             className="hidden sm:block text-xs font-medium px-2 py-0.5 rounded-full"
-            style={{ background: '#F3E8FF', color: '#9333EA' }}
+            style={{ background: '#FFF4EA', color: rust }}
           >
             Manager
           </span>
@@ -285,7 +299,7 @@ export default function ManagerDashboard() {
         {/* No groups yet */}
         {groups.length === 0 && !showCreateGroup && (
           <div className="rounded-3xl border p-10 flex flex-col items-center gap-3 text-center shadow-sm" style={{ borderColor: border, background: `linear-gradient(135deg, #fff 0%, ${soft} 100%)` }}>
-            <span className="text-4xl rounded-2xl px-5 py-4 bg-white shadow-sm">🎶</span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] rounded-lg px-4 py-3 bg-white shadow-sm" style={{ color: rust }}>Group</span>
             <p className="text-lg font-semibold text-gray-800">No groups yet</p>
             <p className="text-sm text-gray-500 max-w-sm">Create your first rehearsal group, then add songs, performers, assignments, and update confirmations from one workspace.</p>
             <button
@@ -350,7 +364,7 @@ export default function ManagerDashboard() {
                 </div>
                 <div className="grid grid-cols-2 gap-3 p-4 sm:p-5" style={{ background: `linear-gradient(135deg, ${soft} 0%, #fff 58%, #F3EEF5 100%)` }}>
                   <StatCard label="Songs" value={songs.length} hint={selectedSong ? selectedSong.title : 'none selected'} color={terracotta} />
-                  <StatCard label="Members" value={members.length} hint={`${performers.length} performers`} color="#9333EA" />
+                  <StatCard label="Members" value={members.length} hint={`${performers.length} performers`} color={lavender} />
                   <StatCard label="Lines" value={lines.length} hint={selectedSong ? 'in selected song' : 'select a song'} color={lavender} />
                   <StatCard label="Mode" value={activeTab} hint="current workspace" color="#16A34A" />
                 </div>
@@ -453,7 +467,7 @@ export default function ManagerDashboard() {
                       background: activeTab === tab.id ? '#fff' : 'transparent',
                     }}
                   >
-                    <span className="mr-2">{tab.icon}</span>{tab.label}
+                    {tab.label}
                   </button>
                 ))}
               </div>
@@ -463,6 +477,9 @@ export default function ManagerDashboard() {
                 {/* Songs tab */}
                 {activeTab === 'songs' && (
                   <div className="space-y-4">
+                    <WorkspaceNote title="Songs workspace">
+                      Create a song with BPM and scale, add lyrics section by section, then click words in the builder to place word-by-word chords or notation.
+                    </WorkspaceNote>
                     <CreateSong groupId={selectedGroup.group_id} onSongCreated={handleSongCreated} />
 
                     {selectedSong && lines.length > 0 && (
@@ -471,8 +488,8 @@ export default function ManagerDashboard() {
                           onClick={() => setPreviewMode(v => !v)}
                           className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition ${
                             previewMode
-                              ? 'bg-violet-600 text-white border-violet-600'
-                              : 'bg-white text-violet-600 border-violet-300 hover:bg-violet-50'
+                              ? 'bg-[#8A2B0E] text-white border-[#8A2B0E]'
+                              : 'bg-white text-[#8A2B0E] border-[#FFD3AC] hover:bg-[#FFF4EA]'
                           }`}
                         >
                           {previewMode ? 'Exit Preview' : 'Preview as Performer'}
@@ -489,10 +506,11 @@ export default function ManagerDashboard() {
                       <SongBuilder
                         song={selectedSong}
                         onLinesUpdated={() => fetchLines(selectedSong.song_id)}
+                        onSongUpdated={handleSongUpdated}
                       />
                     ) : songs.length > 0 ? (
                       <EmptyState
-                        icon="🎵"
+                        label="Songs"
                         title="No song selected"
                         hint="Select a song above to edit its lines and sections."
                       />
@@ -503,6 +521,9 @@ export default function ManagerDashboard() {
                 {/* Members tab */}
                 {activeTab === 'members' && (
                   <div className="space-y-6">
+                    <WorkspaceNote title="Members workspace">
+                      Add registered users to this group. Singers receive lyric assignments; musicians receive notation and chord assignments.
+                    </WorkspaceNote>
                     <InviteMember
                       groupId={selectedGroup.group_id}
                       onMemberAdded={() => setMemberRefresh(prev => prev + 1)}
@@ -520,7 +541,7 @@ export default function ManagerDashboard() {
                   <>
                     {!selectedSong ? (
                       <EmptyState
-                        icon="🎼"
+                        label="Assign"
                         title="No song selected"
                         hint="Select a song from the bar above to manage line assignments."
                         actionLabel="Go to Songs tab to create one"
@@ -528,7 +549,7 @@ export default function ManagerDashboard() {
                       />
                     ) : lines.length === 0 ? (
                       <EmptyState
-                        icon="📝"
+                        label="Lines"
                         title="No lines in this song yet"
                         hint="Add lyrics and sections in the Songs tab first."
                         actionLabel="Go to Songs tab"
@@ -536,18 +557,23 @@ export default function ManagerDashboard() {
                       />
                     ) : performers.length === 0 ? (
                       <EmptyState
-                        icon="👥"
+                        label="Members"
                         title="No performers in your group"
                         hint="Invite singers and musicians in the Members tab before assigning lines."
                         actionLabel="Go to Members tab"
                         onAction={() => setActiveTab('members')}
                       />
                     ) : (
-                      <AssignmentPanel
-                        lines={lines}
-                        members={members}
-                        onAssignmentSaved={() => {}}
-                      />
+                      <div className="space-y-4">
+                        <WorkspaceNote title="Assignments workspace">
+                          Select Lyrics or Notation directly from the song map. Assigned parts become softer; unassigned parts stay bright.
+                        </WorkspaceNote>
+                        <AssignmentPanel
+                          lines={lines}
+                          members={members}
+                          onAssignmentSaved={() => {}}
+                        />
+                      </div>
                     )}
                   </>
                 )}
@@ -557,14 +583,19 @@ export default function ManagerDashboard() {
                   <>
                     {!selectedSong ? (
                       <EmptyState
-                        icon="📊"
+                        label="Status"
                         title="No song selected"
                         hint="Select a song from the bar above to see who has confirmed updates."
                         actionLabel="Go to Songs tab to create one"
                         onAction={() => setActiveTab('songs')}
                       />
                     ) : (
-                      <AcknowledgmentStatus songId={selectedSong.song_id} />
+                      <div className="space-y-4">
+                        <WorkspaceNote title="Status workspace">
+                          Review what changed and whether performers have confirmed the latest assignments, cues, lyrics, and notation edits.
+                        </WorkspaceNote>
+                        <AcknowledgmentStatus songId={selectedSong.song_id} />
+                      </div>
                     )}
                   </>
                 )}

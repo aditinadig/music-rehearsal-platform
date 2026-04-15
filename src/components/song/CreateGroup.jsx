@@ -49,7 +49,7 @@ export default function CreateGroup({ onGroupCreated }) {
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Workspace</p>
           <h2 className="text-lg font-semibold text-gray-800">Create a Group</h2>
         </div>
-        <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-lg shadow-sm">🎶</span>
+        <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-xs font-bold text-orange-700 shadow-sm">GROUP</span>
       </div>
 
       {error && (

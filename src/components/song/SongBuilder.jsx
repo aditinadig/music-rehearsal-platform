@@ -5,7 +5,11 @@ import LineItem from './LineItem'
 
 const SECTIONS = ['Intro', 'Verse 1', 'Verse 2', 'Pre-Chorus', 'Chorus', 'Bridge', 'Outro']
 
-export default function SongBuilder({ song, onLinesUpdated }) {
+function songMetaValue(value, fallback = 'Not set') {
+  return value === null || value === undefined || value === '' ? fallback : value
+}
+
+export default function SongBuilder({ song, onLinesUpdated, onSongUpdated }) {
   const { user } = useAuth()
   const [lines, setLines] = useState([])
   const [wordNotes, setWordNotes] = useState({})
@@ -16,10 +20,22 @@ export default function SongBuilder({ song, onLinesUpdated }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fetching, setFetching] = useState(true)
+  const [editingMeta, setEditingMeta] = useState(false)
+  const [metaTitle, setMetaTitle] = useState(song.title || '')
+  const [metaBpm, setMetaBpm] = useState(song.bpm || '')
+  const [metaScale, setMetaScale] = useState(song.scale || '')
+  const [metaSaving, setMetaSaving] = useState(false)
 
   // Undo state for lyric/notation edits
   const [undoState, setUndoState] = useState(null) // { lineId, oldLyric, oldNotation }
   const undoTimerRef = useRef(null)
+
+  useEffect(() => {
+    setMetaTitle(song.title || '')
+    setMetaBpm(song.bpm || '')
+    setMetaScale(song.scale || '')
+    setEditingMeta(false)
+  }, [song.song_id, song.title, song.bpm, song.scale])
 
   useEffect(() => {
     fetchLines()
@@ -174,6 +190,43 @@ export default function SongBuilder({ song, onLinesUpdated }) {
     }
   }
 
+  async function handleSaveSongMeta() {
+    const bpmValue = Number(metaBpm)
+    if (!metaTitle.trim()) { setError('Song name is required.'); return }
+    if (!Number.isFinite(bpmValue) || bpmValue < 30 || bpmValue > 260) {
+      setError('BPM should be between 30 and 260.')
+      return
+    }
+    if (!metaScale.trim()) { setError('Scale is required.'); return }
+
+    setMetaSaving(true)
+    setError('')
+    const updates = {
+      title: metaTitle.trim(),
+      bpm: bpmValue,
+      scale: metaScale.trim()
+    }
+    const { data, error: updateError } = await supabase
+      .from('songs')
+      .update(updates)
+      .eq('song_id', song.song_id)
+      .select('song_id, title, bpm, scale, group_id, created_by, created_at')
+      .maybeSingle()
+
+    setMetaSaving(false)
+    if (updateError) {
+      setError(updateError.message || 'Unable to update song details.')
+      return
+    }
+    if (!data) {
+      setError('Song details were not updated. This is usually caused by a missing RLS update policy on songs.')
+      return
+    }
+
+    setEditingMeta(false)
+    onSongUpdated?.({ ...song, ...data })
+  }
+
   async function handleEditLine(line, newLyric, newNotation) {
     const updates = {}
     if (newLyric !== line.lyric_text) updates.lyric_text = newLyric
@@ -294,10 +347,71 @@ export default function SongBuilder({ song, onLinesUpdated }) {
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Builder</p>
-          <h2 className="text-lg font-semibold text-gray-800">{song.title}</h2>
-          <p className="text-sm text-gray-500 mt-1">Paste lyrics section by section</p>
+          {editingMeta ? (
+            <div className="grid gap-2 md:grid-cols-[1.4fr_0.55fr_0.8fr]">
+              <input
+                value={metaTitle}
+                onChange={e => setMetaTitle(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                placeholder="Song name"
+              />
+              <input
+                type="number"
+                min="30"
+                max="260"
+                value={metaBpm}
+                onChange={e => setMetaBpm(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                placeholder="BPM"
+              />
+              <input
+                value={metaScale}
+                onChange={e => setMetaScale(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                placeholder="Scale"
+              />
+            </div>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-gray-800">{song.title}</h2>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <span className="rounded-full bg-[#8A2B0E] px-3 py-1 text-xs font-semibold text-white border border-[#8A2B0E]">
+                  BPM {songMetaValue(song.bpm)}
+                </span>
+                <span className="rounded-full bg-[#8A2B0E] px-3 py-1 text-xs font-semibold text-white border border-[#8A2B0E]">
+                  Scale {songMetaValue(song.scale)}
+                </span>
+              </div>
+            </>
+          )}
+          <p className="text-sm text-gray-500 mt-2">Paste singer lyrics and add musician notation section by section.</p>
         </div>
-        <span className="rounded-xl bg-orange-50 border border-orange-100 px-3 py-2 text-lg shadow-sm">✍️</span>
+        <div className="flex gap-2 shrink-0">
+          {editingMeta ? (
+            <>
+              <button
+                onClick={handleSaveSongMeta}
+                disabled={metaSaving}
+                className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
+              >
+                {metaSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setEditingMeta(false)}
+                className="rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 transition hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setEditingMeta(true)}
+              className="rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+            >
+              Edit details
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -319,6 +433,13 @@ export default function SongBuilder({ song, onLinesUpdated }) {
 
       {/* Add section form */}
       <div className="space-y-3 mb-6 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700 mb-1">Instructions</p>
+          <p className="text-sm text-blue-900 leading-5">
+            Add lyrics one line at a time. Add full-line notation in the notation field. After the line is created, click any word in the lyric line to add a chord or notation exactly above that word.
+          </p>
+        </div>
+
         <div className="flex gap-3">
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Section</label>
@@ -350,7 +471,7 @@ export default function SongBuilder({ song, onLinesUpdated }) {
 
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Lyrics <span className="text-gray-400">(one line per row — leave blank for a BGM / instrumental interval)</span>
+            Singer lyrics <span className="text-gray-400">(one line per row — leave blank for a BGM / instrumental interval)</span>
           </label>
           <textarea
             value={lyricBlob}
@@ -363,7 +484,7 @@ export default function SongBuilder({ song, onLinesUpdated }) {
 
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Notation / Chords <span className="text-gray-400">(optional for lyric sections — required if no lyrics)</span>
+            Musician notation / chords <span className="text-gray-400">(optional for lyric sections — required if no lyrics)</span>
           </label>
           <input
             type="text"
@@ -379,7 +500,7 @@ export default function SongBuilder({ song, onLinesUpdated }) {
           disabled={loading || (!lyricBlob.trim() && !notationText.trim())}
           className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
         >
-          {loading ? 'Adding...' : '+ Add Section'}
+              {loading ? 'Adding...' : 'Add Section'}
         </button>
       </div>
 

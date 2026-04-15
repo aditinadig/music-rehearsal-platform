@@ -82,12 +82,13 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
             <input
               value={lyric}
               onChange={e => setLyric(e.target.value)}
+              placeholder="Singer lyric line"
               className="w-full border border-violet-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
             <input
               value={notation}
               onChange={e => setNotation(e.target.value)}
-              placeholder="Notation / chords (optional)"
+              placeholder="Musician notation / chords (optional)"
               className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
             <div className="flex gap-2">
@@ -135,22 +136,22 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
                   const isActive = activeWordIndex === i
                   return (
                     <span key={i} className="flex flex-col items-center">
-                      <span className={`text-xs font-mono font-semibold mb-0.5 ${note ? 'text-teal-500' : 'opacity-0 select-none pointer-events-none'}`}>
-                        {note || '·'}
-                      </span>
                       <button
                         onClick={() => handleWordClick(i, note)}
-                        title={note ? `Note: ${note} — click to edit` : 'Click to add a note'}
-                        className={`text-sm rounded px-0.5 transition leading-snug
-                          ${isActive
+                        title={note ? `Chord/notation: ${note} — click to edit` : 'Click to add a chord or notation'}
+                        className={`min-h-4 rounded px-1 text-xs font-mono font-semibold leading-none transition ${
+                          isActive
                             ? 'bg-violet-100 text-violet-700 outline outline-1 outline-violet-400'
                             : note
-                              ? 'text-gray-800 hover:bg-teal-50'
-                              : 'text-gray-800 hover:bg-violet-50 hover:text-violet-600'
-                          }`}
+                              ? 'text-teal-500 hover:bg-teal-50'
+                              : 'text-gray-300 hover:bg-violet-50 hover:text-violet-600'
+                        }`}
                       >
-                        {word}
+                        {note || '+'}
                       </button>
+                      <span className="text-sm leading-snug text-gray-800">
+                        {word}
+                      </span>
                     </span>
                   )
                 })}
@@ -167,7 +168,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
           {!isInstrumental && activeWordIndex !== null && (
             <div className="mt-2 flex flex-wrap gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
               <span className="text-xs text-gray-500 shrink-0">
-                Note for <span className="font-semibold text-gray-700">"{words[activeWordIndex]}"</span>:
+                Chord or notation for <span className="font-semibold text-gray-700">"{words[activeWordIndex]}"</span>:
               </span>
               <input
                 autoFocus
@@ -177,7 +178,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
                   if (e.key === 'Enter') handleNoteSave()
                   if (e.key === 'Escape') { setActiveWordIndex(null); setNoteInput('') }
                 }}
-                placeholder="e.g. Am, forte, breathe…"
+                placeholder="e.g. Am, C7, hold"
                 className="flex-1 min-w-24 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
               />
               <button
