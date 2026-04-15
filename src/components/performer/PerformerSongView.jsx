@@ -52,6 +52,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   const [groupMembers, setGroupMembers] = useState([])
   const [expandedUpdateIds, setExpandedUpdateIds] = useState(new Set())
   const [showFloatingBadge, setShowFloatingBadge] = useState(false)
+  const [groupId, setGroupId] = useState(null)
 
   // Display modes — persisted in localStorage
   const [stageMode, setStageMode] = useState(() => localStorage.getItem('performer_stageMode') === 'true')
@@ -108,6 +109,34 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   }, [user?.id, selectedSong?.song_id])
 
   useEffect(() => {
+    if (!groupId) return
+    const channel = supabase
+      .channel(`songs-${groupId}`)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'songs' },
+        payload => {
+          const deletedId = payload.old?.song_id
+          if (!deletedId) return
+          setSongs(prev => {
+            const remaining = prev.filter(s => s.song_id !== deletedId)
+            setSelectedSong(sel => {
+              if (sel?.song_id !== deletedId) return sel
+              const next = remaining[0] || null
+              if (!next) setLines([])
+              return next
+            })
+            return remaining
+          })
+        })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'songs' },
+        payload => {
+          if (payload.new?.group_id !== groupId) return
+          setSongs(prev => [...prev, payload.new])
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [groupId])
+
+  useEffect(() => {
     if (!user?.id) return
     const intervalId = window.setInterval(() => { refreshPerformerUpdates() }, 2000)
     function handleVisibilityChange() {
@@ -127,6 +156,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
     const { data: membership } = await supabase
       .from('group_members').select('group_id').eq('user_id', user.id).single()
     if (!membership) { setLoading(false); return }
+    setGroupId(membership.group_id)
 
     const [{ data: songData }, { data: memberData }] = await Promise.all([
       supabase.from('songs').select('*').eq('group_id', membership.group_id).order('created_at', { ascending: true }),
