@@ -31,6 +31,11 @@ function SearchIcon() {
   )
 }
 
+function songLabel(song, includeGroup = false) {
+  if (!song) return ''
+  return includeGroup && song.group_name ? `${song.group_name} · ${song.title}` : song.title
+}
+
 export default function PerformerSongView({ showNotation = false, onDarkDisplayChange }) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -52,7 +57,8 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   const [groupMembers, setGroupMembers] = useState([])
   const [expandedUpdateIds, setExpandedUpdateIds] = useState(new Set())
   const [showFloatingBadge, setShowFloatingBadge] = useState(false)
-  const [groupId, setGroupId] = useState(null)
+  const [groups, setGroups] = useState([])
+  const [groupIds, setGroupIds] = useState([])
 
   // Display modes — persisted in localStorage
   const [stageMode, setStageMode] = useState(() => localStorage.getItem('performer_stageMode') === 'true')
@@ -92,6 +98,10 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
     if (selectedSong) {
       fetchSongData(selectedSong.song_id)
       fetchRecentUpdates(selectedSong.song_id)
+      fetchGroupMembers(selectedSong.group_id)
+    } else {
+      setLines([])
+      setGroupMembers([])
     }
   }, [selectedSong])
 
@@ -108,14 +118,34 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
     return () => { supabase.removeChannel(channel) }
   }, [user?.id, selectedSong?.song_id])
 
+  // Realtime: assignment changes → update blue highlight instantly
   useEffect(() => {
-    if (!groupId) return
+    if (!user?.id) return
     const channel = supabase
-      .channel(`songs-${groupId}`)
+      .channel(`assignments-${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'assignments', filter: `user_id=eq.${user.id}` },
+        payload => {
+          if (payload.new?.line_id) {
+            setAssignedLineIds(prev => new Set([...prev, payload.new.line_id]))
+          }
+        })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'assignments' },
+        async () => {
+          // Re-fetch assignments for current song on any delete (line_id not always in payload without REPLICA IDENTITY FULL)
+          if (selectedSong?.song_id) await fetchSongData(selectedSong.song_id)
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id, selectedSong?.song_id])
+
+  useEffect(() => {
+    if (groupIds.length === 0) return
+    const channel = supabase
+      .channel(`songs-${groupIds.join('-')}`)
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'songs' },
         payload => {
           const deletedId = payload.old?.song_id
-          if (!deletedId) return
+          if (!deletedId || !groupIds.includes(payload.old?.group_id)) return
           setSongs(prev => {
             const remaining = prev.filter(s => s.song_id !== deletedId)
             setSelectedSong(sel => {
@@ -129,12 +159,15 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
         })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'songs' },
         payload => {
-          if (payload.new?.group_id !== groupId) return
-          setSongs(prev => [...prev, payload.new])
+          if (!groupIds.includes(payload.new?.group_id)) return
+          const group = groups.find(g => g.group_id === payload.new.group_id)
+          const nextSong = { ...payload.new, group_name: group?.name }
+          setSongs(prev => [...prev, nextSong])
+          setSelectedSong(sel => sel || nextSong)
         })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [groupId])
+  }, [groupIds.join('|'), groups])
 
   useEffect(() => {
     if (!user?.id) return
@@ -153,20 +186,34 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
 
   async function init() {
     setLoading(true)
-    const { data: membership } = await supabase
-      .from('group_members').select('group_id').eq('user_id', user.id).single()
-    if (!membership) { setLoading(false); return }
-    setGroupId(membership.group_id)
+    const { data: memberships } = await supabase
+      .from('group_members').select('group_id').eq('user_id', user.id)
+    const ids = [...new Set((memberships || []).map(m => m.group_id).filter(Boolean))]
+    if (ids.length === 0) { setLoading(false); return }
+    setGroupIds(ids)
 
-    const [{ data: songData }, { data: memberData }] = await Promise.all([
-      supabase.from('songs').select('*').eq('group_id', membership.group_id).order('created_at', { ascending: true }),
-      supabase.from('group_members').select('users(name)').eq('group_id', membership.group_id),
+    const [{ data: groupData }, { data: songData }] = await Promise.all([
+      supabase.from('groups').select('group_id, name').in('group_id', ids),
+      supabase.from('songs').select('*').in('group_id', ids).order('created_at', { ascending: true }),
     ])
+    const loadedGroups = groupData?.length
+      ? groupData
+      : ids.map(group_id => ({ group_id, name: 'Group' }))
+    const groupNameById = Object.fromEntries(loadedGroups.map(g => [g.group_id, g.name]))
+    const loadedSongs = (songData || []).map(song => ({ ...song, group_name: groupNameById[song.group_id] }))
 
-    if (songData?.length) { setSongs(songData); setSelectedSong(songData[0]) }
-    setGroupMembers(memberData || [])
+    setGroups(loadedGroups)
+    setSongs(loadedSongs)
+    setSelectedSong(loadedSongs[0] || null)
     await fetchPendingAcks()
     setLoading(false)
+  }
+
+  async function fetchGroupMembers(nextGroupId) {
+    if (!nextGroupId) { setGroupMembers([]); return }
+    const { data } = await supabase
+      .from('group_members').select('users(name)').eq('group_id', nextGroupId)
+    setGroupMembers(data || [])
   }
 
   async function fetchSongData(songId) {
@@ -232,6 +279,8 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
       .update({ confirmed: true, confirmed_at: new Date().toISOString() }).eq('ack_id', ackId)
     setConfirmingId(null)
     setJustConfirmedId(ackId)
+    // Refresh assignments immediately so the blue highlight updates right away
+    if (selectedSong) await fetchSongData(selectedSong.song_id)
     setTimeout(async () => {
       setJustConfirmedId(null)
       await fetchPendingAcks()
@@ -326,6 +375,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
 
   const memberNames = groupMembers.map(m => m.users?.name).filter(Boolean).join(', ')
   const hasUpdates = pendingAcks.length > 0 || recentUpdates.length > 0
+  const hasAssignedLines = assignedLineIds.size > 0
 
   // Dark display theme tokens
   const dk = darkDisplay
@@ -335,9 +385,10 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   const subText = dk ? 'text-gray-400' : 'text-gray-500'
   const mutedText = dk ? 'text-gray-500' : 'text-gray-400'
   const sectionHover = dk ? 'hover:bg-gray-800' : 'hover:bg-gray-50'
-  const assignedLineBg = dk ? 'bg-blue-900/40' : 'bg-blue-50'
-  const assignedLineText = dk ? 'text-blue-300 font-medium' : 'text-blue-900 font-medium'
-  const unassignedLineText = dk ? 'text-gray-600' : 'text-gray-500'
+  const assignedLineBg = dk ? 'bg-[#4D3342]' : 'bg-[#FFF4EA]'
+  const assignedLineText = dk ? 'text-[#FFD3AC] font-medium' : 'text-[#8A2B0E] font-medium'
+  const unassignedLineText = dk ? 'text-gray-500' : 'text-gray-400'
+  const stageUnassignedLineText = dk ? 'text-gray-700' : 'text-gray-300'
   const cueBg = dk ? 'bg-amber-900/30 border-amber-800' : 'bg-amber-50 border-amber-100'
   const cueText = dk ? 'text-amber-400' : 'text-amber-800'
 
@@ -352,7 +403,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
   if (songs.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
-        <p className="text-sm text-gray-400">No songs in your group yet. Check back once your manager adds some.</p>
+        <p className="text-sm text-gray-400">No songs in your groups yet. Check back once your manager adds some.</p>
       </div>
     )
   }
@@ -374,7 +425,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                   onChange={e => setSelectedSong(songs.find(s => s.song_id === e.target.value))}
                   className={`appearance-none text-sm font-semibold pr-5 bg-transparent border-none cursor-pointer focus:outline-none ${headingText}`}
                 >
-                  {songs.map(s => <option key={s.song_id} value={s.song_id}>{s.title}</option>)}
+                  {songs.map(s => <option key={s.song_id} value={s.song_id}>{songLabel(s, groups.length > 1)}</option>)}
                 </select>
                 <ChevronDown className={`absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${mutedText}`} />
               </div>
@@ -384,7 +435,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
               <svg className={`w-3.5 h-3.5 shrink-0 ${mutedText}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
               </svg>
-              <span className={`text-sm font-semibold ${headingText}`}>{selectedSong?.title}</span>
+              <span className={`text-sm font-semibold ${headingText}`}>{songLabel(selectedSong, groups.length > 1)}</span>
             </div>
           )}
           {memberNames && <p className={`text-xs mt-1.5 pl-1 ${mutedText}`}>{memberNames}</p>}
@@ -394,12 +445,12 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
       {/* Stage mode header — song title + next line btn + exit btn */}
       {stageMode && (
         <div className="flex items-center justify-between px-1 gap-2">
-          <h1 className={`text-xl font-bold ${headingText}`}>{selectedSong?.title}</h1>
+          <h1 className={`text-xl font-bold ${headingText}`}>{songLabel(selectedSong, groups.length > 1)}</h1>
           <div className="flex items-center gap-2 shrink-0">
             {assignedLineIds.size > 0 && (
               <button
                 onClick={goToNextAssignedLine}
-                className="text-xs font-semibold px-3 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 transition min-h-[44px]"
+                className="text-xs font-semibold px-3 py-2.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition min-h-[44px]"
               >
                 Next Line →
               </button>
@@ -445,7 +496,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                 <button
                   onClick={() => setShowHistory(false)}
                   className={`flex-1 py-2.5 text-xs font-semibold transition border-b-2 -mb-px ${!showHistory
-                    ? (dk ? 'border-blue-400 text-blue-400' : 'border-violet-600 text-violet-600')
+                    ? (dk ? 'border-[#FFD3AC] text-[#FFD3AC]' : 'border-violet-600 text-violet-600')
                     : `border-transparent ${mutedText} hover:${dk ? 'text-gray-400' : 'text-gray-600'}`}`}
                 >
                   Pending{pendingAcks.length > 0 ? ` (${pendingAcks.length})` : ''}
@@ -453,7 +504,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                 <button
                   onClick={() => setShowHistory(true)}
                   className={`flex-1 py-2.5 text-xs font-semibold transition border-b-2 -mb-px ${showHistory
-                    ? (dk ? 'border-blue-400 text-blue-400' : 'border-violet-600 text-violet-600')
+                    ? (dk ? 'border-[#FFD3AC] text-[#FFD3AC]' : 'border-violet-600 text-violet-600')
                     : `border-transparent ${mutedText} hover:${dk ? 'text-gray-400' : 'text-gray-600'}`}`}
                 >
                   History
@@ -471,7 +522,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                       const isExpanded = expandedUpdateIds.has(ack.ack_id)
                       const displayText = renderChangeSummary(change) || CHANGE_LABELS[change?.change_type] || change?.change_type
                       return (
-                        <div key={ack.ack_id} className={`flex items-start gap-3 px-4 py-3 border-b ${cardBorder} last:border-b-0 transition-colors duration-300 ${isJustConfirmed ? 'bg-green-50' : ''}`}>
+                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2 border-b ${cardBorder} last:border-b-0 transition-colors duration-300 ${isJustConfirmed ? 'bg-green-50' : ''}`}>
                           <div className={`w-1 self-stretch rounded-full shrink-0 mt-1 ${isJustConfirmed ? 'bg-green-400' : 'bg-red-400'}`} />
                           <button
                             onClick={() => toggleUpdateExpanded(ack.ack_id)}
@@ -482,7 +533,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               onClick={() => scrollToLine(change?.line_id)}
-                              className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[44px] min-w-[44px] flex items-center justify-center`}
+                              className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[36px] min-w-[36px] flex items-center justify-center`}
                               title="Jump to line"
                             >
                               <SearchIcon />
@@ -493,7 +544,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                               <button
                                 onClick={() => confirmAck(ack.ack_id)}
                                 disabled={confirmingId === ack.ack_id}
-                                className={`text-xs font-semibold px-3 py-2.5 rounded-lg transition disabled:opacity-40 min-h-[44px] ${dk ? 'bg-gray-700 border border-gray-600 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'}`}
+                                className={`text-xs font-semibold px-3 py-2 rounded-lg transition disabled:opacity-40 min-h-[36px] ${dk ? 'bg-gray-700 border border-gray-600 text-gray-200 hover:bg-gray-600' : 'bg-gray-100 border-2 border-gray-300 text-gray-700 hover:bg-gray-200'}`}
                               >
                                 {confirmingId === ack.ack_id ? '...' : 'Confirm'}
                               </button>
@@ -516,7 +567,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                       const isExpanded = expandedUpdateIds.has(ack.ack_id)
                       const displayText = renderChangeSummary(change) || CHANGE_LABELS[change?.change_type] || change?.change_type
                       return (
-                        <div key={ack.ack_id} className={`flex items-start gap-3 px-4 py-3 border-b ${cardBorder} last:border-b-0`}>
+                        <div key={ack.ack_id} className={`flex items-center gap-3 px-4 py-2 border-b ${cardBorder} last:border-b-0`}>
                           <div className="w-1 self-stretch bg-blue-300 rounded-full shrink-0 mt-1" />
                           <button
                             onClick={() => toggleUpdateExpanded(ack.ack_id)}
@@ -526,7 +577,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                           </button>
                           <button
                             onClick={() => scrollToLine(change?.line_id)}
-                            className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[44px] min-w-[44px] flex items-center justify-center`}
+                            className={`${mutedText} hover:text-gray-600 p-2 rounded-lg transition min-h-[36px] min-w-[36px] flex items-center justify-center`}
                             title="Jump to line"
                           >
                             <SearchIcon />
@@ -563,11 +614,11 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                   <button
                     key={section}
                     onClick={() => scrollToSection(section)}
-                    className={`w-full text-left rounded-xl px-3 py-2.5 transition min-h-[44px] ${dk ? 'bg-blue-900/30 hover:bg-blue-900/50 active:bg-blue-900/70' : 'bg-blue-50 hover:bg-blue-100 active:bg-blue-200'}`}
+                    className={`w-full text-left rounded-xl px-3 py-2.5 transition min-h-[44px] ${dk ? 'bg-[#4D3342] hover:bg-[#5B3C4D] active:bg-[#684557]' : 'bg-[#FFF4EA] hover:bg-[#FFD3AC] active:bg-[#F7BE96]'}`}
                   >
-                    <p className={`text-xs font-semibold ${dk ? 'text-blue-300' : 'text-blue-800'}`}>
+                    <p className={`text-xs font-semibold ${dk ? 'text-[#FFD3AC]' : 'text-[#8A2B0E]'}`}>
                       {section}
-                      <span className={`font-normal ml-1 ${dk ? 'text-blue-400' : 'text-blue-500'}`}>
+                      <span className={`font-normal ml-1 ${dk ? 'text-[#9988A1]' : 'text-[#E35336]'}`}>
                         — {count} line{count !== 1 ? 's' : ''}
                       </span>
                     </p>
@@ -620,7 +671,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
               onChange={e => setSelectedSong(songs.find(s => s.song_id === e.target.value))}
               className={`text-xs border-2 rounded-lg pl-2 pr-6 py-2.5 appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-400 min-h-[44px] ${dk ? 'bg-gray-800 border-gray-600 text-gray-200 hover:border-gray-500' : 'bg-white border-gray-300 text-gray-700 hover:border-violet-400'}`}
             >
-              {songs.map(s => <option key={s.song_id} value={s.song_id}>{s.title}</option>)}
+              {songs.map(s => <option key={s.song_id} value={s.song_id}>{songLabel(s, groups.length > 1)}</option>)}
             </select>
             <ChevronDown className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none ${subText}`} />
           </div>
@@ -648,12 +699,18 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
         <p className={`text-sm px-1 ${mutedText}`}>This song has no lines yet.</p>
       )}
 
+      {stageMode && selectedSong && lines.length > 0 && !hasAssignedLines && (
+        <div className={`rounded-2xl border px-4 py-3 ${dk ? 'bg-amber-900/20 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+          <p className="text-sm font-semibold">No lines assigned.</p>
+        </div>
+      )}
+
       {Object.entries(sections).map(([sectionLabel, sectionLines]) => {
         const isCollapsed = collapsedSections.has(sectionLabel)
         const hasAssignedInSection = sectionLines.some(l => assignedLineIds.has(l.line_id))
 
         // In stage mode, hide sections with no assigned lines entirely
-        if (stageMode && !hasAssignedInSection) return null
+        if (stageMode && hasAssignedLines && !hasAssignedInSection) return null
 
         return (
           <div
@@ -682,11 +739,16 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                 {sectionLines.map(line => {
                   const isAssigned = assignedLineIds.has(line.line_id)
                   const cue = cueMap[line.line_id]
+                  const lineTextClass = isAssigned
+                    ? assignedLineText
+                    : stageMode
+                      ? stageUnassignedLineText
+                      : unassignedLineText
 
                   return (
                     <div
                       key={line.line_id}
-                      className={stageMode && !isAssigned ? 'opacity-25' : ''}
+                      className={stageMode && hasAssignedLines && !isAssigned ? 'opacity-45' : ''}
                     >
                       {cue && (
                         <div className={`flex items-center gap-2 border-b px-4 py-1.5 ${cueBg}`}>
@@ -719,7 +781,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                                   <span className={`${notesSizeClass} font-mono font-semibold ${dk ? 'text-teal-400' : 'text-teal-600'} mb-0.5 ${note ? '' : 'opacity-0 select-none pointer-events-none'}`}>
                                     {note || '.'}
                                   </span>
-                                  <span className={`${fontSizeClass} ${isAssigned ? assignedLineText : unassignedLineText}`}>
+                                  <span className={`${fontSizeClass} ${lineTextClass}`}>
                                     {word}
                                   </span>
                                 </span>
@@ -727,7 +789,7 @@ export default function PerformerSongView({ showNotation = false, onDarkDisplayC
                             })}
                           </div>
                         ) : (
-                          <p className={`${fontSizeClass} ${isAssigned ? assignedLineText : unassignedLineText}`}>
+                          <p className={`${fontSizeClass} ${lineTextClass}`}>
                             {line.lyric_text}
                           </p>
                         )}

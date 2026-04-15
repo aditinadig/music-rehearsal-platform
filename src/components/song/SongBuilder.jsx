@@ -290,9 +290,15 @@ export default function SongBuilder({ song, onLinesUpdated }) {
   }, {})
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-1">{song.title}</h2>
-      <p className="text-sm text-gray-400 mb-6">Paste lyrics section by section</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Builder</p>
+          <h2 className="text-lg font-semibold text-gray-800">{song.title}</h2>
+          <p className="text-sm text-gray-500 mt-1">Paste lyrics section by section</p>
+        </div>
+        <span className="rounded-xl bg-orange-50 border border-orange-100 px-3 py-2 text-lg shadow-sm">✍️</span>
+      </div>
 
       {error && (
         <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>
@@ -312,7 +318,7 @@ export default function SongBuilder({ song, onLinesUpdated }) {
       )}
 
       {/* Add section form */}
-      <div className="space-y-3 mb-8">
+      <div className="space-y-3 mb-6 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <div className="flex gap-3">
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Section</label>
@@ -391,7 +397,7 @@ export default function SongBuilder({ song, onLinesUpdated }) {
               <h3 className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-2">
                 {section}
               </h3>
-              <div className="bg-gray-50 rounded-xl px-4">
+              <div className="bg-gray-50 rounded-xl px-4 border border-gray-100">
                 {sectionLines.map((line, idx) => (
                   <LineItem
                     key={line.line_id}

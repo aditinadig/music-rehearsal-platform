@@ -52,14 +52,14 @@ export default function MemberList({ groupId, onMembersLoaded }) {
     setRemovingId(null)
   }
 
-  const roleColor = {
-    singer: 'bg-pink-100 text-pink-600',
-    musician: 'bg-blue-100 text-blue-600',
-    manager: 'bg-indigo-100 text-indigo-600'
+  const roleStyle = {
+    singer: { background: '#FCE7F3', color: '#DB2777' },
+    musician: { background: '#DBEAFE', color: '#2563EB' },
+    manager: { background: '#F3E8FF', color: '#9333EA' },
   }
 
   if (loading) return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
       <div className="flex items-center justify-center py-4">
         <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
       </div>
@@ -67,8 +67,16 @@ export default function MemberList({ groupId, onMembersLoaded }) {
   )
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h2 className="text-lg font-semibold text-gray-800 mb-4">Group Members</h2>
+    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Roster</p>
+          <h2 className="text-lg font-semibold text-gray-800">Group Members</h2>
+        </div>
+        <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-full px-3 py-1">
+          {members.length} total
+        </span>
+      </div>
       {members.length === 0 ? (
         <p className="text-sm text-gray-400">No members yet. Add some above.</p>
       ) : (
@@ -76,11 +84,14 @@ export default function MemberList({ groupId, onMembersLoaded }) {
           {members.map(member => (
             <div
               key={member.user_id}
-              className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl"
+              className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl border border-gray-100"
             >
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-800">{member.name}</span>
-                <span className={`text-xs font-medium px-2 py-1 rounded-full ${roleColor[member.role]}`}>
+                <span
+                  className="text-xs font-medium px-2 py-1 rounded-full"
+                  style={roleStyle[member.role] || { background: '#f3f4f6', color: '#4b5563' }}
+                >
                   {member.role}
                 </span>
               </div>

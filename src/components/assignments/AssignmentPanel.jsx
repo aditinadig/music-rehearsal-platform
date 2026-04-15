@@ -63,7 +63,6 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
     try {
       const line = lines.find(l => l.line_id === lineId)
-      const member = members.find(m => m.user_id === memberId)
 
       const [{ data: existingAssignments, error: assignmentFetchError }, { data: existingCues, error: cueFetchError }] = await Promise.all([
         supabase.from('assignments').select('assignment_id, user_id').eq('line_id', lineId),
@@ -78,7 +77,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       const currentCues = existingCues || []
       const currentAssigneeIds = currentAssignments.map(a => a.user_id)
       const currentCueUserIds = currentCues.map(c => c.user_id)
-      const affectedUserIds = [...new Set([...currentAssigneeIds, ...currentCueUserIds, memberId])]
+      const affectedUserIds = [...new Set([...currentAssigneeIds, ...currentCueUserIds, ...(memberId ? [memberId] : [])])]
       snapshotAssignments = currentAssignments.map(a => ({ ...a }))
       snapshotCues = currentCues.map(c => ({ ...c }))
 
@@ -87,73 +86,82 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
         .map(m => m.name)
         .join(', ') || 'Unassigned'
 
-      const selectedAssignment = currentAssignments.find(a => a.user_id === memberId)
-      const assignmentsToRemove = currentAssignments.filter(a => a.user_id !== memberId)
+      const isUnassign = !memberId
 
-      if (assignmentsToRemove.length > 0) {
-        const { error: deleteAssignmentsError } = await supabase
-          .from('assignments')
-          .delete()
-          .in('assignment_id', assignmentsToRemove.map(a => a.assignment_id))
-
-        if (deleteAssignmentsError) throw new Error(deleteAssignmentsError.message)
-      }
-
-      if (!selectedAssignment) {
-        const { error: assignError } = await supabase
-          .from('assignments')
-          .insert({ line_id: lineId, user_id: memberId, assigned_by: user.id })
-
-        if (assignError) throw new Error(assignError.message)
-      }
-
-      const assignmentChanged =
-        currentAssigneeIds.length !== 1 || currentAssigneeIds[0] !== memberId
-
-      const existingCueForMember = currentCues.find(c => c.user_id === memberId)
-      const otherCueIds = currentCues.filter(c => c.user_id !== memberId).map(c => c.cue_id)
-
-      if (otherCueIds.length > 0) {
-        const { error: deleteOtherCuesError } = await supabase
-          .from('cues').delete().in('cue_id', otherCueIds)
-        if (deleteOtherCuesError) throw new Error(deleteOtherCuesError.message)
-      }
-
-      const trimmedCue = cue.trim()
-      const previousCueValue = existingCueForMember?.cue_text || currentCues[0]?.cue_text || null
-      const cueChanged = (previousCueValue || '') !== trimmedCue
-
-      if (assignmentChanged) {
-        await writeChangeLog(
-          lineId,
-          'assignment_changed',
-          previousAssigneeNames,
-          member ? `${member.name} assigned to: "${line?.lyric_text}"` : `Assigned to user ${memberId}`,
-          affectedUserIds
-        )
-      }
-
-      if (trimmedCue) {
-        if (existingCueForMember) {
-          const { error: updateCueError } = await supabase
-            .from('cues')
-            .update({ cue_text: trimmedCue, updated_at: new Date().toISOString() })
-            .eq('cue_id', existingCueForMember.cue_id)
-          if (updateCueError) throw new Error(updateCueError.message)
-        } else {
-          const { error: insertCueError } = await supabase
-            .from('cues')
-            .insert({ line_id: lineId, user_id: memberId, cue_text: trimmedCue, created_by: user.id })
-          if (insertCueError) throw new Error(insertCueError.message)
+      if (isUnassign) {
+        // Remove all assignments and cues for this line
+        if (currentAssignments.length > 0) {
+          const { error: deleteAssignmentsError } = await supabase
+            .from('assignments').delete().in('assignment_id', currentAssignments.map(a => a.assignment_id))
+          if (deleteAssignmentsError) throw new Error(deleteAssignmentsError.message)
         }
-      } else if (existingCueForMember) {
-        const { error: deleteCueError } = await supabase
-          .from('cues').delete().eq('cue_id', existingCueForMember.cue_id)
-        if (deleteCueError) throw new Error(deleteCueError.message)
-      }
+        if (currentCues.length > 0) {
+          const { error: deleteCuesError } = await supabase
+            .from('cues').delete().in('cue_id', currentCues.map(c => c.cue_id))
+          if (deleteCuesError) throw new Error(deleteCuesError.message)
+        }
+        if (currentAssignments.length > 0) {
+          await writeChangeLog(lineId, 'assignment_changed', previousAssigneeNames, 'Unassigned', affectedUserIds)
+        }
+      } else {
+        const member = members.find(m => m.user_id === memberId)
+        const selectedAssignment = currentAssignments.find(a => a.user_id === memberId)
+        const assignmentsToRemove = currentAssignments.filter(a => a.user_id !== memberId)
 
-      if (cueChanged) {
-        await writeChangeLog(lineId, 'cue_changed', previousCueValue, trimmedCue || 'Cue cleared', affectedUserIds)
+        if (assignmentsToRemove.length > 0) {
+          const { error: deleteAssignmentsError } = await supabase
+            .from('assignments').delete().in('assignment_id', assignmentsToRemove.map(a => a.assignment_id))
+          if (deleteAssignmentsError) throw new Error(deleteAssignmentsError.message)
+        }
+
+        if (!selectedAssignment) {
+          const { error: assignError } = await supabase
+            .from('assignments').insert({ line_id: lineId, user_id: memberId, assigned_by: user.id })
+          if (assignError) throw new Error(assignError.message)
+        }
+
+        const assignmentChanged = currentAssigneeIds.length !== 1 || currentAssigneeIds[0] !== memberId
+
+        const existingCueForMember = currentCues.find(c => c.user_id === memberId)
+        const otherCueIds = currentCues.filter(c => c.user_id !== memberId).map(c => c.cue_id)
+
+        if (otherCueIds.length > 0) {
+          const { error: deleteOtherCuesError } = await supabase
+            .from('cues').delete().in('cue_id', otherCueIds)
+          if (deleteOtherCuesError) throw new Error(deleteOtherCuesError.message)
+        }
+
+        const trimmedCue = cue.trim()
+        const previousCueValue = existingCueForMember?.cue_text || currentCues[0]?.cue_text || null
+        const cueChanged = (previousCueValue || '') !== trimmedCue
+
+        if (assignmentChanged) {
+          await writeChangeLog(
+            lineId, 'assignment_changed', previousAssigneeNames,
+            member ? `${member.name} assigned to: "${line?.lyric_text}"` : `Assigned to user ${memberId}`,
+            affectedUserIds
+          )
+        }
+
+        if (trimmedCue) {
+          if (existingCueForMember) {
+            const { error: updateCueError } = await supabase
+              .from('cues').update({ cue_text: trimmedCue, updated_at: new Date().toISOString() }).eq('cue_id', existingCueForMember.cue_id)
+            if (updateCueError) throw new Error(updateCueError.message)
+          } else {
+            const { error: insertCueError } = await supabase
+              .from('cues').insert({ line_id: lineId, user_id: memberId, cue_text: trimmedCue, created_by: user.id })
+            if (insertCueError) throw new Error(insertCueError.message)
+          }
+        } else if (existingCueForMember) {
+          const { error: deleteCueError } = await supabase
+            .from('cues').delete().eq('cue_id', existingCueForMember.cue_id)
+          if (deleteCueError) throw new Error(deleteCueError.message)
+        }
+
+        if (cueChanged) {
+          await writeChangeLog(lineId, 'cue_changed', previousCueValue, trimmedCue || 'Cue cleared', affectedUserIds)
+        }
       }
 
       fetchAssignments()
@@ -256,6 +264,17 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
     if (ackError) throw new Error(ackError.message || 'Failed to create acknowledgment rows.')
   }
 
+  const assignedLineIdSet = new Set(assignments.map(a => a.line_id))
+
+  const unassignedGroupedLines = lines
+    .filter(l => !assignedLineIdSet.has(l.line_id))
+    .reduce((acc, line) => {
+      const section = line.section_label || 'General'
+      if (!acc[section]) acc[section] = []
+      acc[section].push(line)
+      return acc
+    }, {})
+
   const groupedLines = lines.reduce((acc, line) => {
     const section = line.section_label || 'General'
     if (!acc[section]) acc[section] = []
@@ -268,11 +287,17 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
   return (
     <div className="space-y-6">
       {/* New assignment form */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-1">Assign Lines & Set Cues</h2>
-        <p className="text-sm text-gray-400 mb-6">
-          Pick a line, assign it to a performer, and optionally set an entry cue.
-        </p>
+      <div className="rounded-2xl shadow-sm border border-orange-100 p-5 bg-gradient-to-br from-white to-orange-50">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Assignment desk</p>
+            <h2 className="text-lg font-semibold text-gray-800">Assign Lines & Set Cues</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Pick a line, assign it to a performer, and optionally set an entry cue.
+            </p>
+          </div>
+          <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-lg shadow-sm">🎼</span>
+        </div>
 
         {error && (
           <div className="bg-red-50 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>
@@ -301,13 +326,16 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             >
               <option value="">Select a line...</option>
-              {Object.entries(groupedLines).map(([section, sectionLines]) => (
+              {Object.entries(unassignedGroupedLines).map(([section, sectionLines]) => (
                 <optgroup key={section} label={section}>
                   {sectionLines.map(line => (
-                    <option key={line.line_id} value={line.line_id}>{line.lyric_text}</option>
+                    <option key={line.line_id} value={line.line_id}>{line.lyric_text || '(instrumental)'}</option>
                   ))}
                 </optgroup>
               ))}
+              {Object.keys(unassignedGroupedLines).length === 0 && (
+                <option disabled value="">All lines are assigned</option>
+              )}
             </select>
           </div>
 
@@ -352,9 +380,17 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
       {/* Current assignments list */}
       {assignments.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">Current Assignments</h3>
-          <div className="space-y-2">
+        <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Live map</p>
+              <h3 className="text-sm font-semibold text-gray-700">Current Assignments</h3>
+            </div>
+            <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-full px-3 py-1">
+              {assignments.length} assigned
+            </span>
+          </div>
+          <div className="grid gap-2">
             {assignments.map(a => {
               const line = lines.find(l => l.line_id === a.line_id)
               const member = members.find(m => m.user_id === a.user_id)
@@ -400,6 +436,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                           onChange={e => setInlineMember(e.target.value)}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
                         >
+                          <option value="">— Unassign line —</option>
                           {performers.map(m => (
                             <option key={m.user_id} value={m.user_id}>
                               {m.name} ({m.role})
@@ -422,7 +459,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleInlineSave(a.line_id)}
-                          disabled={inlineLoading || !inlineMember}
+                          disabled={inlineLoading}
                           className="bg-violet-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-violet-700 transition disabled:opacity-50"
                         >
                           {inlineLoading ? 'Saving...' : 'Save'}

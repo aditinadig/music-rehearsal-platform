@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../supabase/client'
 
 const CHANGE_LABELS = {
-  assignment_changed: { label: 'Assignment', color: 'bg-indigo-100 text-indigo-600' },
-  cue_changed: { label: 'Cue', color: 'bg-purple-100 text-purple-600' },
-  lyric_edited: { label: 'Lyric Edit', color: 'bg-amber-100 text-amber-600' },
-  note_edited: { label: 'Note Update', color: 'bg-teal-100 text-teal-600' },
+  assignment_changed: { label: 'Assignment', style: { background: '#E0E7FF', color: '#4F46E5' } },
+  cue_changed: { label: 'Cue', style: { background: '#F3E8FF', color: '#9333EA' } },
+  lyric_edited: { label: 'Lyric Edit', style: { background: '#FEF3C7', color: '#D97706' } },
+  note_edited: { label: 'Note Update', style: { background: '#CCFBF1', color: '#0D9488' } },
 }
 
 function renderChangeValue(change) {
@@ -120,7 +120,8 @@ export default function AcknowledgmentStatus({ songId }) {
 
   if (changes.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Update History</h2>
         <p className="text-sm text-gray-400">No changes have been pushed for this song yet.</p>
       </div>
@@ -131,9 +132,12 @@ export default function AcknowledgmentStatus({ songId }) {
   const confirmedCount = totalAcks.filter(ack => ack.confirmed).length
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
       <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-gray-800">Update History</h2>
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
+          <h2 className="text-lg font-semibold text-gray-800">Update History</h2>
+        </div>
         <span
           className={`text-xs font-medium px-3 py-1 rounded-full ${
             confirmedCount === totalAcks.length && totalAcks.length > 0
@@ -149,7 +153,7 @@ export default function AcknowledgmentStatus({ songId }) {
         {changes.map(change => {
           const meta = CHANGE_LABELS[change.change_type] || {
             label: change.change_type,
-            color: 'bg-gray-100 text-gray-600',
+            style: { background: '#f3f4f6', color: '#4b5563' },
           }
           const acknowledgments = change.acknowledgments || []
           const confirmed = acknowledgments.filter(ack => ack.confirmed).length
@@ -159,7 +163,7 @@ export default function AcknowledgmentStatus({ songId }) {
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${meta.color}`}>
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={meta.style}>
                       {meta.label}
                     </span>
                     <span className="text-xs text-gray-400">{change.line?.section_label}</span>
