@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase/client'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 import CreateGroup from '../components/song/CreateGroup'
 import CreateSong from '../components/song/CreateSong'
 import SongBuilder from '../components/song/SongBuilder'

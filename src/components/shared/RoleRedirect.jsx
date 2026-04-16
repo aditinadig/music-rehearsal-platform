@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/useAuth'
 
 export default function RoleRedirect() {
   const { profile, loading, user } = useAuth()
@@ -22,11 +22,11 @@ export default function RoleRedirect() {
     )
   }
 
-  if (!user && !profile) return <Navigate to="/login" replace />
+  if (!user && !profile) return <Navigate to="/" replace />
 
   if (profile.role === 'manager') return <Navigate to="/manager" replace />
   if (profile.role === 'singer') return <Navigate to="/singer" replace />
   if (profile.role === 'musician') return <Navigate to="/musician" replace />
 
-  return <Navigate to="/login" replace />
+  return <Navigate to="/" replace />
 }
