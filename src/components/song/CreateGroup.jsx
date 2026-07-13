@@ -43,7 +43,7 @@ export default function CreateGroup({ onGroupCreated }) {
   }
 
   return (
-    <div className="rounded-2xl shadow-sm border border-orange-100 p-5 bg-gradient-to-br from-white to-orange-50">
+    <div data-demo-tour="create-group-form" className="rounded-2xl shadow-sm border border-orange-100 p-5 bg-gradient-to-br from-white to-orange-50">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Workspace</p>
@@ -60,6 +60,7 @@ export default function CreateGroup({ onGroupCreated }) {
 
       <div className="flex gap-3">
         <input
+          data-demo-tour="create-group-name"
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
@@ -67,6 +68,7 @@ export default function CreateGroup({ onGroupCreated }) {
           className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         />
         <button
+          data-demo-tour="create-group-submit"
           onClick={handleCreate}
           disabled={loading || !name.trim()}
           className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"

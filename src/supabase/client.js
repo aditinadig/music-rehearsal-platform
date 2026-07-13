@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { demoSupabase } from '../demo/demoClient'
 
 const AUTH_STORAGE_KEY = 'cue-auth-session'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30
@@ -47,7 +48,7 @@ const authStorage = {
   },
 }
 
-export const supabase = createClient(
+const productionSupabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY,
   {
@@ -60,3 +61,18 @@ export const supabase = createClient(
     },
   }
 )
+
+function activeClient() {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/demo')) {
+    return demoSupabase
+  }
+  return productionSupabase
+}
+
+export const supabase = new Proxy({}, {
+  get(_target, property) {
+    const client = activeClient()
+    const value = client[property]
+    return typeof value === 'function' ? value.bind(client) : value
+  },
+})

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../context/useAuth'
 import PerformerSongView from '../components/performer/PerformerSongView'
+import { performerPreferenceKey } from '../utils/performerPreferences'
 
 const terracotta = '#E35336'
 const ink = '#12100A'
@@ -9,7 +10,7 @@ const roleText = '#B43A22'
 
 export default function SingerDashboard() {
   const { profile, logout } = useAuth()
-  const [darkDisplay, setDarkDisplay] = useState(() => localStorage.getItem('performer_darkDisplay') === 'true')
+  const [darkDisplay, setDarkDisplay] = useState(() => localStorage.getItem(performerPreferenceKey('darkDisplay')) === 'true')
 
   return (
     <div className={`min-h-screen transition-colors duration-200 ${darkDisplay ? 'bg-gray-950' : 'bg-white'}`}>
@@ -33,17 +34,10 @@ export default function SingerDashboard() {
           </button>
         </div>
       </div>
-      <div className="w-full px-4 py-5 sm:px-8 lg:px-10 xl:px-12 sm:py-7 space-y-5">
-        <div className="px-1 py-2">
-          <div>
-            <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A2B0E]">Singer portal</p>
-                <h1 className="mt-2 text-2xl font-semibold text-gray-950">Your assigned lines, ready for rehearsal.</h1>
-                <p className="mt-2 w-full text-sm leading-6 text-[#5B6472]">
-                  Choose a group first, then rehearse the songs assigned inside that group. Confirm updates before rehearsal starts.
-                </p>
-            </div>
-          </div>
+      <div className="w-full px-4 py-5 sm:px-8 lg:px-10 xl:px-12 sm:py-6 space-y-4">
+        <div className="px-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#8A2B0E]">Singer portal</p>
+          <h1 className="mt-1 text-xl font-semibold text-gray-950">Your lyrics, cues, and updates.</h1>
         </div>
         <PerformerSongView showNotation={false} onDarkDisplayChange={setDarkDisplay} />
       </div>

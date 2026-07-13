@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { supabase } from '../../supabase/client'
 import { useAuth } from '../../context/useAuth'
 
+const SCALE_OPTIONS = [
+  'C major', 'C minor', 'C♯ major', 'C♯ minor', 'D major', 'D minor',
+  'E♭ major', 'E♭ minor', 'E major', 'E minor', 'F major', 'F minor',
+  'F♯ major', 'F♯ minor', 'G major', 'G minor', 'A♭ major', 'A♭ minor',
+  'A major', 'A minor', 'B♭ major', 'B♭ minor', 'B major', 'B minor',
+]
+
 export default function CreateSong({ groupId, onSongCreated }) {
   const { user } = useAuth()
   const [title, setTitle] = useState('')
@@ -45,7 +52,7 @@ export default function CreateSong({ groupId, onSongCreated }) {
   }
 
   return (
-    <div className="rounded-2xl shadow-sm border border-orange-100 p-5 bg-gradient-to-br from-white to-orange-50">
+    <div data-demo-tour="create-song-form" className="rounded-2xl shadow-sm border border-orange-100 p-5 bg-gradient-to-br from-white to-orange-50">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Song library</p>
@@ -64,6 +71,7 @@ export default function CreateSong({ groupId, onSongCreated }) {
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Song title</label>
           <input
+            data-demo-tour="create-song-title"
             type="text"
             value={title}
             onChange={e => setTitle(e.target.value)}
@@ -74,6 +82,7 @@ export default function CreateSong({ groupId, onSongCreated }) {
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">BPM</label>
           <input
+            data-demo-tour="create-song-bpm"
             type="number"
             min="30"
             max="260"
@@ -85,15 +94,18 @@ export default function CreateSong({ groupId, onSongCreated }) {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Scale</label>
-          <input
-            type="text"
+          <select
+            data-demo-tour="create-song-scale"
             value={scale}
             onChange={e => setScale(e.target.value)}
-            placeholder="e.g. C minor"
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          />
+            className="w-full border border-gray-300 bg-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <option value="">Choose a scale…</option>
+            {SCALE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
         </div>
         <button
+          data-demo-tour="create-song-submit"
           onClick={handleCreate}
           disabled={loading || !canCreate}
           className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50 md:min-w-28"

@@ -346,8 +346,8 @@ function Nav({ navigate }) {
         Cue<span style={{ color: gold }}>.</span>
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <button className="btn-ghost" style={{ padding: '0.45rem 1rem', fontSize: '0.83rem' }} onClick={() => navigate('/login')}>Log in</button>
-        <button className="btn-primary" style={{ padding: '0.5rem 1.15rem', fontSize: '0.83rem' }} onClick={() => navigate('/register')}>Get started →</button>
+        <button className="nav-link" style={{ padding: '0.45rem 0.7rem' }} onClick={() => navigate('/login')}>Log in</button>
+        <button className="btn-primary" style={{ padding: '0.5rem 1.15rem', fontSize: '0.83rem' }} onClick={() => navigate('/demo')}>Try the demo →</button>
       </div>
     </nav>
   )
@@ -670,10 +670,10 @@ export default function Landing() {
             </p>
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <button className="btn-primary" onClick={() => navigate('/register')}>Create your group →</button>
-              <button className="btn-ghost" onClick={() => navigate('/login')}>Log in</button>
+              <button className="btn-primary" onClick={() => navigate('/demo')}>Try the interactive demo →</button>
+              <button className="btn-ghost" onClick={() => navigate('/register')}>Create your workspace</button>
             </div>
-            <p style={{ marginTop: '1.1rem', fontSize: '0.74rem', color: faint, letterSpacing: '0.03em' }}>Free to use · No credit card needed</p>
+            <p style={{ marginTop: '1.1rem', fontSize: '0.74rem', color: faint, letterSpacing: '0.03em' }}>No signup for the demo · Sample workspace · Reset anytime</p>
 
             {/* stat pills */}
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem', flexWrap: 'wrap' }}>
@@ -874,7 +874,7 @@ export default function Landing() {
           </p>
 
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={() => navigate('/register')} style={{
+            <button onClick={() => navigate('/demo')} style={{
               background: gold, border: 'none', color: '#fff',
               padding: '0.95rem 2.25rem', borderRadius: '10px', cursor: 'pointer',
               fontSize: '0.9rem', fontFamily: sans, fontWeight: 600,
@@ -883,8 +883,8 @@ export default function Landing() {
             }}
               onMouseEnter={e => { e.target.style.opacity = '0.88'; e.target.style.transform = 'translateY(-2px)' }}
               onMouseLeave={e => { e.target.style.opacity = '1'; e.target.style.transform = 'translateY(0)' }}
-            >Create your group</button>
-            <button onClick={() => navigate('/login')} style={{
+            >Try the interactive demo</button>
+            <button onClick={() => navigate('/register')} style={{
               background: 'transparent', border: `1.5px solid rgba(227,83,54,0.35)`, color: ink,
               padding: '0.95rem 2.25rem', borderRadius: '10px', cursor: 'pointer',
               fontSize: '0.9rem', fontFamily: sans, fontWeight: 300,
@@ -892,7 +892,7 @@ export default function Landing() {
             }}
               onMouseEnter={e => e.target.style.borderColor = 'rgba(227,83,54,0.7)'}
               onMouseLeave={e => e.target.style.borderColor = 'rgba(227,83,54,0.35)'}
-            >Log in</button>
+            >Create your workspace</button>
           </div>
         </div>
       </section>
@@ -905,8 +905,9 @@ export default function Landing() {
         <div style={{ fontFamily: serif, fontSize: '1.1rem', color: muted }}>Cue<span style={{ color: gold }}>.</span></div>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
           <button className="nav-link" onClick={() => navigate('/login')}>Log in</button>
+          <button className="nav-link" onClick={() => navigate('/demo')}>Demo</button>
           <button className="nav-link" onClick={() => navigate('/register')}>Sign up</button>
-          <span style={{ fontSize: '0.76rem', color: faint }}>Built for musicians · 2025</span>
+          <span style={{ fontSize: '0.76rem', color: faint }}>Built for musicians · {new Date().getFullYear()}</span>
         </div>
       </footer>
     </div>

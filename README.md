@@ -2,6 +2,10 @@
 
 Cue is a web app for coordinating music rehearsals across managers, singers, and musicians. It replaces the usual mix of lyric sheets, chord screenshots, group chats, and last-minute verbal corrections with a role-aware rehearsal workspace: managers build songs line by line, assign lyric and notation responsibilities, attach entry cues, and track which performers have acknowledged each change.
 
+## Try the Interactive Demo
+
+Open `/demo` on the deployed app to explore a complete rehearsal workflow without creating an account. The demo renders the same manager, singer, and musician screens used after authentication, backed by a browser-only sample workspace. A blocking, action-gated tour spotlights one control at a time and guides visitors through assignments, cues, acknowledgements, Stage Mode, and role-specific views. Demo actions never write to production data, and resetting the workspace restarts the tour.
+
 The project is intentionally centered on the human coordination problem in rehearsal. In a live or semi-live music setting, the hardest part is often not storing the song; it is making sure the right person sees the right part, understands what changed, and confirms that they are ready before rehearsal or performance.
 
 ## Core Experience

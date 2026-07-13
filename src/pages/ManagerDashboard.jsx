@@ -10,11 +10,9 @@ import AssignmentPanel from '../components/assignments/AssignmentPanel'
 import AcknowledgmentStatus from '../components/assignments/AcknowledgmentStatus'
 
 const terracotta = '#E35336'
-const peach = '#FFD3AC'
 const lavender = '#9988A1'
 const rust = '#8A2B0E'
 const ink = '#12100A'
-const muted = '#5F5550'
 const border = '#F0D7C8'
 const soft = '#FFF4EA'
 
@@ -29,28 +27,6 @@ function EmptyState({ label = 'Empty', title, hint, actionLabel, onAction }) {
           {actionLabel}
         </button>
       )}
-    </div>
-  )
-}
-
-function StatCard({ label, value, hint, color = terracotta }) {
-  return (
-    <div className="rounded-2xl border bg-white px-4 py-3 shadow-sm" style={{ borderColor: border }}>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: muted }}>{label}</p>
-        <span className="h-2 w-2 rounded-full" style={{ background: color }} />
-      </div>
-      <p className="mt-2 text-2xl font-semibold" style={{ color: ink }}>{value}</p>
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
-    </div>
-  )
-}
-
-function WorkspaceNote({ title, children }) {
-  return (
-    <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700 mb-1">{title}</p>
-      <p className="text-sm leading-5 text-gray-600">{children}</p>
     </div>
   )
 }
@@ -84,10 +60,10 @@ function SongPreview({ lines }) {
 }
 
 const TABS = [
-  { id: 'songs', label: 'Songs' },
-  { id: 'members', label: 'Members' },
-  { id: 'assignments', label: 'Assignments' },
-  { id: 'status', label: 'Status' },
+  { id: 'songs', label: 'Build song', step: '1' },
+  { id: 'members', label: 'People', step: '2' },
+  { id: 'assignments', label: 'Assign parts', step: '3' },
+  { id: 'status', label: 'Confirmations', step: '4' },
 ]
 
 export default function ManagerDashboard() {
@@ -103,9 +79,10 @@ export default function ManagerDashboard() {
   const [activeTab, setActiveTab] = useState('songs')
   const [memberRefresh, setMemberRefresh] = useState(0)
   const [previewMode, setPreviewMode] = useState(false)
-  const [deletingSongId, setDeletingSongId] = useState(null)
+  const [, setDeletingSongId] = useState(null)
   const [deleteError, setDeleteError] = useState('')
   const [confirmDeleteSong, setConfirmDeleteSong] = useState(null)
+  const [showCreateSong, setShowCreateSong] = useState(false)
 
   useEffect(() => { fetchGroups() }, [])
 
@@ -147,7 +124,10 @@ export default function ManagerDashboard() {
       .eq('group_id', groupId)
       .order('created_at', { ascending: true })
 
-    if (!error) setSongs(data)
+    if (!error) {
+      setSongs(data)
+      setSelectedSong(current => data.some(song => song.song_id === current?.song_id) ? current : data[0] || null)
+    }
   }
 
   async function fetchMembers(groupId) {
@@ -183,6 +163,7 @@ export default function ManagerDashboard() {
   function handleSongCreated(newSong) {
     setSongs(prev => [...prev, newSong])
     setSelectedSong(newSong)
+    setShowCreateSong(false)
   }
 
   function handleSongUpdated(updatedSong) {
@@ -325,89 +306,38 @@ export default function ManagerDashboard() {
 
         {groups.length > 0 && !showCreateGroup && (
           <>
-            {/* Workspace overview */}
-            <div className="rounded-3xl border overflow-hidden shadow-sm" style={{ borderColor: border }}>
-              <div className="grid lg:grid-cols-[1.2fr_1fr]">
-                <div className="p-5 sm:p-6" style={{ background: ink }}>
-                  <div className="flex items-center gap-2 mb-5">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: peach }}>Manager workspace</span>
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: terracotta }} />
-                    <span className="text-[11px] text-gray-400">{selectedGroup?.name}</span>
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl leading-tight font-semibold text-white">
-                    Build the rehearsal, assign every part, track every update.
-                  </h1>
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-gray-400">
-                    Keep songs, performers, cues, and acknowledgments together so the group knows what changed before rehearsal starts.
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => setActiveTab('songs')}
-                      className="rounded-lg bg-white px-3 py-2 text-xs font-semibold transition hover:opacity-90"
-                      style={{ color: rust }}
-                    >
-                      Add songs
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('members')}
-                      className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Invite members
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('status')}
-                      className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
-                    >
-                      Check status
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 p-4 sm:p-5" style={{ background: `linear-gradient(135deg, ${soft} 0%, #fff 58%, #F3EEF5 100%)` }}>
-                  <StatCard label="Songs" value={songs.length} hint={selectedSong ? selectedSong.title : 'none selected'} color={terracotta} />
-                  <StatCard label="Members" value={members.length} hint={`${performers.length} performers`} color={lavender} />
-                  <StatCard label="Lines" value={lines.length} hint={selectedSong ? 'in selected song' : 'select a song'} color={lavender} />
-                  <StatCard label="Mode" value={activeTab} hint="current workspace" color="#16A34A" />
-                </div>
-              </div>
-            </div>
-
-            {/* Group selector banner */}
-            <div className="rounded-2xl border px-4 py-3 flex items-center justify-between gap-4 shadow-sm" style={{ background: soft, borderColor: border }}>
-              <div className="flex items-center gap-3 flex-wrap flex-1">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] shrink-0" style={{ color: lavender }}>Group</p>
-                <div className="flex gap-2 flex-wrap">
-                  {groups.map(g => (
-                    <button
-                      key={g.group_id}
-                      onClick={() => setSelectedGroup(g)}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition"
-                      style={{
-                        background: selectedGroup?.group_id === g.group_id ? rust : '#fff',
-                        color: selectedGroup?.group_id === g.group_id ? '#fff' : muted,
-                        border: `1px solid ${selectedGroup?.group_id === g.group_id ? rust : border}`,
-                      }}
-                    >
-                      {g.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {members.length > 0 && (
-                  <span
-                    className="text-xs font-medium px-3 py-1.5 rounded-full"
-                    style={{ background: '#F3F4F6', color: '#4B5563' }}
+            <div className="flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-end" style={{ borderColor: border }}>
+              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+                <label className="min-w-0">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: lavender }}>Group</span>
+                  <select
+                    value={selectedGroup?.group_id || ''}
+                    onChange={event => setSelectedGroup(groups.find(group => group.group_id === event.target.value))}
+                    className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-[#E35336] focus:ring-2 focus:ring-orange-100"
+                    style={{ borderColor: border }}
                   >
-                    {members.length} member{members.length !== 1 ? 's' : ''}
-                  </span>
+                    {groups.map(group => <option key={group.group_id} value={group.group_id}>{group.name}</option>)}
+                  </select>
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: lavender }}>Song</span>
+                  <select
+                    value={selectedSong?.song_id || ''}
+                    onChange={event => setSelectedSong(songs.find(song => song.song_id === event.target.value))}
+                    className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold text-gray-800 outline-none focus:border-[#E35336] focus:ring-2 focus:ring-orange-100"
+                    style={{ borderColor: border }}
+                  >
+                    {songs.length === 0 && <option value="">No songs yet</option>}
+                    {songs.map(song => <option key={song.song_id} value={song.song_id}>{song.title}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="hidden text-xs text-gray-400 lg:inline">{performers.length} performers</span>
+                <button data-demo-tour="manager-new-group" onClick={() => setShowCreateGroup(true)} className="rounded-lg px-3 py-2 text-xs font-semibold text-[#8A2B0E] hover:bg-[#FFF4EA]">New group</button>
+                {selectedSong && (
+                  <button onClick={() => setConfirmDeleteSong(selectedSong)} className="rounded-lg px-3 py-2 text-xs font-medium text-gray-400 hover:bg-red-50 hover:text-red-600">Delete song</button>
                 )}
-                <button
-                  onClick={() => setShowCreateGroup(true)}
-                  className="text-xs font-semibold hover:underline"
-                  style={{ color: terracotta }}
-                >
-                  + New Group
-                </button>
               </div>
             </div>
 
@@ -418,56 +348,22 @@ export default function ManagerDashboard() {
               </div>
             )}
 
-            {/* Persistent song selector */}
-            {songs.length > 0 && (
-              <div className="bg-white rounded-2xl border px-4 py-3 flex items-center gap-3 flex-wrap shadow-sm" style={{ borderColor: border }}>
-                <span className="text-xs font-bold uppercase tracking-[0.14em] shrink-0" style={{ color: lavender }}>Song</span>
-                <div className="flex gap-2 flex-wrap flex-1">
-                  {songs.map(song => (
-                    <div key={song.song_id} className="relative group/pill">
-                      <button
-                        onClick={() => setSelectedSong(song)}
-                        className="pl-3 pr-7 py-1.5 rounded-lg text-sm font-medium transition"
-                        style={{
-                          background: selectedSong?.song_id === song.song_id ? terracotta : '#F9FAFB',
-                          color: selectedSong?.song_id === song.song_id ? '#fff' : '#4B5563',
-                        }}
-                      >
-                        {song.title}
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); setConfirmDeleteSong(song) }}
-                        disabled={deletingSongId === song.song_id}
-                        title="Delete song"
-                        className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold transition opacity-0 group-hover/pill:opacity-100 ${
-                          selectedSong?.song_id === song.song_id
-                            ? 'bg-white/25 text-white hover:bg-white/35'
-                            : 'bg-gray-300 text-gray-600 hover:bg-red-200 hover:text-red-600'
-                        }`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Tab bar */}
             <div className="bg-white rounded-3xl border overflow-hidden shadow-sm" style={{ borderColor: border }}>
               <div className="flex overflow-x-auto border-b" style={{ borderColor: border, background: '#FAFAF8' }}>
                 {TABS.map(tab => (
                   <button
                     key={tab.id}
+                    data-demo-tour={`manager-tab-${tab.id}`}
                     onClick={() => setActiveTab(tab.id)}
-                    className="flex-1 px-4 py-3 text-sm font-semibold transition border-b-2 -mb-px whitespace-nowrap"
+                    className="flex-1 px-3 py-3 text-sm font-semibold transition border-b-2 -mb-px whitespace-nowrap"
                     style={{
                       borderColor: activeTab === tab.id ? terracotta : 'transparent',
                       color: activeTab === tab.id ? terracotta : '#6B7280',
                       background: activeTab === tab.id ? '#fff' : 'transparent',
                     }}
                   >
-                    {tab.label}
+                    <span className="mr-1.5 text-[10px] opacity-50">{tab.step}</span>{tab.label}
                   </button>
                 ))}
               </div>
@@ -477,10 +373,18 @@ export default function ManagerDashboard() {
                 {/* Songs tab */}
                 {activeTab === 'songs' && (
                   <div className="space-y-4">
-                    <WorkspaceNote title="Songs workspace">
-                      Create a song with BPM and scale, add lyrics section by section, then click words in the builder to place word-by-word chords or notation.
-                    </WorkspaceNote>
-                    <CreateSong groupId={selectedGroup.group_id} onSongCreated={handleSongCreated} />
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-gray-500">Build lyrics and notation for the selected song.</p>
+                      {songs.length > 0 && (
+                        <button
+                          onClick={() => setShowCreateSong(value => !value)}
+                          className="rounded-lg bg-[#8A2B0E] px-3 py-2 text-xs font-semibold text-white hover:bg-[#6F210A]"
+                        >
+                          {showCreateSong ? 'Cancel' : 'Add another song'}
+                        </button>
+                      )}
+                    </div>
+                    {(showCreateSong || songs.length === 0) && <CreateSong groupId={selectedGroup.group_id} onSongCreated={handleSongCreated} />}
 
                     {selectedSong && lines.length > 0 && (
                       <div className="flex justify-end">
@@ -521,9 +425,6 @@ export default function ManagerDashboard() {
                 {/* Members tab */}
                 {activeTab === 'members' && (
                   <div className="space-y-6">
-                    <WorkspaceNote title="Members workspace">
-                      Add registered users to this group. Singers receive lyric assignments; musicians receive notation and chord assignments.
-                    </WorkspaceNote>
                     <InviteMember
                       groupId={selectedGroup.group_id}
                       onMemberAdded={() => setMemberRefresh(prev => prev + 1)}
@@ -564,10 +465,7 @@ export default function ManagerDashboard() {
                         onAction={() => setActiveTab('members')}
                       />
                     ) : (
-                      <div className="space-y-4">
-                        <WorkspaceNote title="Assignments workspace">
-                          Select Lyrics or Notation directly from the song map. Assigned parts become softer; unassigned parts stay bright.
-                        </WorkspaceNote>
+                      <div>
                         <AssignmentPanel
                           lines={lines}
                           members={members}
@@ -590,10 +488,7 @@ export default function ManagerDashboard() {
                         onAction={() => setActiveTab('songs')}
                       />
                     ) : (
-                      <div className="space-y-4">
-                        <WorkspaceNote title="Status workspace">
-                          Review what changed and whether performers have confirmed the latest assignments, cues, lyrics, and notation edits.
-                        </WorkspaceNote>
+                      <div>
                         <AcknowledgmentStatus songId={selectedSong.song_id} />
                       </div>
                     )}

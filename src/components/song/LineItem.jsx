@@ -1,5 +1,11 @@
 import { useState } from 'react'
 
+const NOTE_OPTIONS = [
+  'C', 'C♯ / D♭', 'D', 'D♯ / E♭', 'E', 'F', 'F♯ / G♭', 'G', 'G♯ / A♭', 'A', 'A♯ / B♭', 'B',
+  'Cm', 'C♯m', 'Dm', 'E♭m', 'Em', 'Fm', 'F♯m', 'Gm', 'A♭m', 'Am', 'B♭m', 'Bm',
+  'Hold', 'Breath', 'Rest',
+]
+
 function IconBtn({ onClick, title, children, className = '' }) {
   return (
     <button
@@ -75,17 +81,19 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
   // ── Edit mode ──────────────────────────────────────────────────────────
   if (editing) {
     return (
-      <div className="py-3 border-b border-gray-100 last:border-0">
+      <div data-demo-tour="edit-line-form" className="py-3 border-b border-gray-100 last:border-0">
         <div className="flex gap-3 items-start">
           <span className="text-xs text-gray-400 mt-2 w-5 shrink-0">{lineNumber}</span>
           <div className="flex-1 space-y-2">
             <input
+              data-demo-tour="edit-line-lyric"
               value={lyric}
               onChange={e => setLyric(e.target.value)}
               placeholder="Singer lyric line"
               className="w-full border border-violet-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
             <input
+              data-demo-tour="edit-line-notation"
               value={notation}
               onChange={e => setNotation(e.target.value)}
               placeholder="Musician notation / chords (optional)"
@@ -93,6 +101,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
             />
             <div className="flex gap-2">
               <button
+                data-demo-tour="edit-line-save"
                 onClick={handleSave}
                 disabled={saving || (!lyric.trim() && !notation.trim())}
                 className="text-xs bg-violet-600 text-white px-3 py-1 rounded-lg hover:bg-violet-700 disabled:opacity-50 transition"
@@ -137,6 +146,7 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
                   return (
                     <span key={i} className="flex flex-col items-center">
                       <button
+                        data-demo-tour="word-note-trigger"
                         onClick={() => handleWordClick(i, note)}
                         title={note ? `Chord/notation: ${note} — click to edit` : 'Click to add a chord or notation'}
                         className={`min-h-4 rounded px-1 text-xs font-mono font-semibold leading-none transition ${
@@ -166,22 +176,23 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
 
           {/* Inline note editor (only for lines with lyrics) */}
           {!isInstrumental && activeWordIndex !== null && (
-            <div className="mt-2 flex flex-wrap gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
+            <div data-demo-tour="word-note-editor" className="mt-2 flex flex-wrap gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
               <span className="text-xs text-gray-500 shrink-0">
                 Chord or notation for <span className="font-semibold text-gray-700">"{words[activeWordIndex]}"</span>:
               </span>
-              <input
+              <select
+                data-demo-tour="word-note-input"
                 autoFocus
                 value={noteInput}
                 onChange={e => setNoteInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleNoteSave()
-                  if (e.key === 'Escape') { setActiveWordIndex(null); setNoteInput('') }
-                }}
-                placeholder="e.g. Am, C7, hold"
-                className="flex-1 min-w-24 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
-              />
+                className="flex-1 min-w-32 border border-gray-300 bg-white rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+              >
+                <option value="">Choose a note or instruction…</option>
+                {noteInput && !NOTE_OPTIONS.includes(noteInput) && <option value={noteInput}>{noteInput}</option>}
+                {NOTE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
               <button
+                data-demo-tour="word-note-save"
                 onClick={handleNoteSave}
                 disabled={noteSaving || !noteInput.trim()}
                 className="text-xs bg-violet-600 text-white px-2.5 py-1 rounded hover:bg-violet-700 disabled:opacity-50 transition"
@@ -224,11 +235,13 @@ export default function LineItem({ line, lineNumber, onSave, onDelete, onMoveUp,
             </IconBtn>
           )}
           {onSave && (
-            <IconBtn onClick={() => setEditing(true)} title="Edit line" className="hover:text-violet-600 hover:bg-violet-50">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </IconBtn>
+            <span data-demo-tour="edit-line-trigger">
+              <IconBtn onClick={() => setEditing(true)} title="Edit line" className="hover:text-violet-600 hover:bg-violet-50">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </IconBtn>
+            </span>
           )}
           {onDelete && (
             <IconBtn onClick={onDelete} title="Delete line" className="hover:text-red-500 hover:bg-red-50">

@@ -463,6 +463,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                                 return (
                                   <button
                                     key={part.key}
+                                    data-demo-tour={`assignment-part-${part.role}`}
                                     onClick={() => handleSelectPart(part)}
                                     className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                                       selected
@@ -488,7 +489,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm lg:sticky lg:top-24 self-start">
+          <div data-demo-tour={selectedPart ? "assignment-editor" : undefined} className="rounded-2xl border border-orange-100 bg-white p-4 shadow-sm lg:sticky lg:top-24 self-start">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Selected part</p>
             {!selectedPart ? (
               <div className="rounded-xl bg-gray-50 px-4 py-5 text-sm text-gray-500">
@@ -517,6 +518,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                     Assign to {roleLabel(selectedRequiredRole)}
                   </label>
                   <select
+                    data-demo-tour="assignment-member-select"
                     value={selectedMember}
                     onChange={e => setSelectedMember(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
@@ -539,6 +541,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
                   </label>
                   <input
                     type="text"
+                    data-demo-tour="assignment-cue"
                     value={cueText}
                     onChange={e => setCueText(e.target.value)}
                     placeholder="e.g. Enter after bar 8, or after the guitar intro"
@@ -548,6 +551,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
 
                 <div className="flex flex-wrap gap-2">
                   <button
+                    data-demo-tour="assignment-save"
                     onClick={handleSaveNew}
                     disabled={loading || !selectedMember}
                     className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
@@ -571,17 +575,14 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
       </div>
 
       {assignments.length > 0 && (
-        <div className="rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Summary</p>
-              <h3 className="text-sm font-semibold text-gray-700">Assigned parts</h3>
-            </div>
+        <details className="group rounded-2xl border border-orange-100 bg-white p-5 shadow-sm">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-gray-700">View assigned parts</span>
             <span className="text-xs font-semibold text-gray-500 bg-gray-100 rounded-full px-3 py-1">
               {assignments.length} assigned
             </span>
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
+          </summary>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
             {assignments.map(a => {
               const line = lines.find(l => l.line_id === a.line_id)
               const member = members.find(m => m.user_id === a.user_id)
@@ -609,7 +610,7 @@ export default function AssignmentPanel({ lines, members, onAssignmentSaved }) {
               )
             })}
           </div>
-        </div>
+        </details>
       )}
 
       {assignments.length === 0 && lines.length > 0 && (

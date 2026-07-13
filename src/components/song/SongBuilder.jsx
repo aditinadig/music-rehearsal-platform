@@ -432,7 +432,7 @@ export default function SongBuilder({ song, onLinesUpdated, onSongUpdated }) {
       )}
 
       {/* Add section form */}
-      <div className="space-y-3 mb-6 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <div data-demo-tour="add-lyrics-form" className="space-y-3 mb-6 rounded-2xl border border-gray-100 bg-gray-50 p-4">
         <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700 mb-1">Instructions</p>
           <p className="text-sm text-blue-900 leading-5">
@@ -474,6 +474,7 @@ export default function SongBuilder({ song, onLinesUpdated, onSongUpdated }) {
             Singer lyrics <span className="text-gray-400">(one line per row — leave blank for a BGM / instrumental interval)</span>
           </label>
           <textarea
+            data-demo-tour="add-lyrics-input"
             value={lyricBlob}
             onChange={e => setLyricBlob(e.target.value)}
             placeholder={`e.g.\nTum hi ho\nAb tum hi ho\nZindagi ab tum hi ho`}
@@ -487,6 +488,7 @@ export default function SongBuilder({ song, onLinesUpdated, onSongUpdated }) {
             Musician notation / chords <span className="text-gray-400">(optional for lyric sections — required if no lyrics)</span>
           </label>
           <input
+            data-demo-tour="add-notation-input"
             type="text"
             value={notationText}
             onChange={e => setNotationText(e.target.value)}
@@ -496,6 +498,7 @@ export default function SongBuilder({ song, onLinesUpdated, onSongUpdated }) {
         </div>
 
         <button
+          data-demo-tour="add-section-submit"
           onClick={handleAddSection}
           disabled={loading || (!lyricBlob.trim() && !notationText.trim())}
           className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"

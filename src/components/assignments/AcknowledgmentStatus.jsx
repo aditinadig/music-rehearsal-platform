@@ -120,7 +120,7 @@ export default function AcknowledgmentStatus({ songId }) {
 
   if (changes.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+      <div data-demo-tour="confirmation-board" className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Update History</h2>
         <p className="text-sm text-gray-500 mb-3">
@@ -135,7 +135,7 @@ export default function AcknowledgmentStatus({ songId }) {
   const confirmedCount = totalAcks.filter(ack => ack.confirmed).length
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
+    <div data-demo-tour="confirmation-board" className="bg-white rounded-2xl shadow-sm border border-orange-100 p-5">
       <div className="flex items-center justify-between mb-5">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-orange-700 mb-1">Status board</p>
