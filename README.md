@@ -10,7 +10,7 @@ The project is intentionally centered on the human coordination problem in rehea
 
 ## Core Experience
 
-- Managers create rehearsal groups, add members, build songs by section, and maintain lyrics, chords, notation, BPM, and scale metadata.
+- Managers create rehearsal groups, invite performers by name, email, and role, build songs by section, and maintain lyrics, chords, notation, BPM, and scale metadata.
 - Singers see the lyric lines assigned to them, with update prompts when lyrics, cues, or assignments change.
 - Musicians see notation, chords, word-level notes, cues, BPM, and scale in a performance-oriented view.
 - Performers can confirm updates, giving managers a live status board for who has seen each change.
@@ -36,7 +36,7 @@ The app uses Supabase as the backend layer, with React calling Supabase directly
 
 The main data model is organized around these entities:
 
-- `users`: application profile records linked to Supabase Auth users, including name and role.
+- `users`: application profile records linked to Supabase Auth users, including name, normalized email, and role.
 - `groups`: rehearsal groups owned by managers.
 - `group_members`: membership join table connecting users to groups.
 - `songs`: songs within a group, including metadata such as title, BPM, and scale.
@@ -47,12 +47,14 @@ The main data model is organized around these entities:
 - `change_log`: durable record of assignment, cue, lyric, and notation changes.
 - `acknowledgments`: per-performer confirmation rows generated from change log entries.
 
-Backend behavior is split between direct table operations and a small RPC requirement:
+Backend behavior is split between direct table operations and a manager-authorized invitation function:
 
 - Authentication sessions are persisted through a custom Supabase auth storage adapter that mirrors session state to `localStorage` and a same-site cookie.
-- Registration creates a Supabase Auth account, then inserts the app profile into `users`.
+- Public registration creates manager accounts only. A database trigger creates the manager profile when the Auth account is created.
 - Managers create groups and are automatically inserted as group members.
-- Member invites use the `get_user_id_by_email` RPC to map a registered email address to a user id before inserting into `group_members`.
+- Managers call the authenticated `invite-group-member` Edge Function with a performer name, email, and singer/musician role.
+- New performers receive a Supabase invitation and choose their own password at `/accept-invite`; passwords are never generated or emailed by Cue.
+- Existing Cue users are added to the group and receive a secure email login link instead of a second account.
 - Line edits, cue changes, and assignment changes write to `change_log`, then create `acknowledgments` for affected performers.
 - Performer dashboards subscribe to Supabase realtime changes for acknowledgements, assignments, and songs.
 - Manager status views subscribe to change and acknowledgement updates to keep confirmation state current.
@@ -92,6 +94,20 @@ VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
+Apply the invitation migration and deploy the authenticated Edge Function:
+
+```bash
+supabase db push
+supabase secrets set SITE_URL=http://localhost:5173
+supabase functions deploy invite-group-member
+```
+
+For production, set `SITE_URL` to the deployed HTTPS origin. Add both
+`https://your-domain/accept-invite` and `https://your-domain/app` to the
+Supabase Auth redirect URL allow list. Supabase provides `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to deployed Edge Functions;
+the service-role key must never be exposed through a `VITE_` client variable.
+
 Start the development server:
 
 ```bash
@@ -112,4 +128,4 @@ npm run build
 
 ## Current Scope
 
-Cue currently focuses on the rehearsal coordination loop: build songs, assign performers, surface role-specific views, and track update acknowledgement. Natural next backend extensions would include SQL migrations for the Supabase schema, stricter RLS documentation, invitation flows that do not require prior registration, and server-side cleanup or cascade policies for deleting songs and their dependent records.
+Cue currently focuses on the rehearsal coordination loop: manager-controlled performer onboarding, song construction, assignments, role-specific views, and update acknowledgements. Natural next backend extensions include a complete versioned baseline schema, stricter RLS documentation, delivery monitoring for invitation email, and server-side cleanup or cascade policies for deleting songs and their dependent records.

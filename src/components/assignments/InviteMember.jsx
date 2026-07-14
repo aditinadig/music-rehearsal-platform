@@ -8,7 +8,9 @@ const demoPeople = [
 
 export default function InviteMember({ groupId, onMemberAdded }) {
   const isDemo = window.location.pathname.startsWith('/demo')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [role, setRole] = useState('singer')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -41,36 +43,45 @@ export default function InviteMember({ groupId, onMemberAdded }) {
     setError('')
     setSuccess('')
 
-    // Find user by email in auth.users via our users table
-    // We need to look up the user by email from the users table
-    // But users table does not store email, so we use a Supabase function
-    const { data: authData, error: authError } = await supabase
-      .rpc('get_user_id_by_email', { email_input: email.trim() })
-
-    if (authError || !authData) {
-      setError('No user found with that email. Make sure they have registered first.')
-      setLoading(false)
-      return
-    }
-
-    // Add them to the group
-    const { error: memberError } = await supabase
-      .from('group_members')
-      .insert({ group_id: groupId, user_id: authData })
-
-    if (memberError) {
-      if (memberError.code === '23505') {
-        setError('This user is already in the group.')
-      } else {
-        setError(memberError.message)
+    if (isDemo) {
+      const { data: authData, error: authError } = await supabase
+        .rpc('get_user_id_by_email', { email_input: selectedEmail })
+      if (authError || !authData) {
+        setError('This demo performer could not be found.')
+        setLoading(false)
+        return
       }
-      setLoading(false)
-      return
+      const { error: memberError } = await supabase
+        .from('group_members')
+        .insert({ group_id: groupId, user_id: authData })
+      if (memberError) {
+        setError(memberError.code === '23505' ? 'This performer is already in the group.' : memberError.message)
+        setLoading(false)
+        return
+      }
+      setAddedDemoEmails(current => new Set(current).add(selectedEmail))
+      setSuccess('Member added successfully!')
+    } else {
+      if (!name.trim()) {
+        setError('Enter the performer’s name.')
+        setLoading(false)
+        return
+      }
+      const { data, error: inviteError } = await supabase.functions.invoke('invite-group-member', {
+        body: { groupId, name: name.trim(), email: selectedEmail, role },
+      })
+      if (inviteError || !data?.ok) {
+        setError(data?.error || inviteError?.message || 'Unable to send the invitation.')
+        setLoading(false)
+        return
+      }
+      setName('')
+      setSuccess(data.status === 'existing'
+        ? 'Existing Cue user added. A secure group link was emailed.'
+        : 'Invitation sent. They can set their password from the email.')
     }
 
     setEmail('')
-    if (isDemo) setAddedDemoEmails(current => new Set(current).add(selectedEmail))
-    setSuccess('Member added successfully!')
     setLoading(false)
     onMemberAdded()
   }
@@ -84,7 +95,7 @@ export default function InviteMember({ groupId, onMemberAdded }) {
           <p className="text-sm text-gray-500 mt-1">
             {isDemo
               ? 'Choose from the prepared singers and musicians.'
-              : 'Add singers and musicians by email. They must have already registered.'}
+              : 'Enter a performer once. New users set their password from a secure email; existing users receive the group link.'}
           </p>
         </div>
         <span className="rounded-xl bg-white border border-orange-100 px-3 py-2 text-xs font-bold text-orange-700 shadow-sm">TEAM</span>
@@ -102,8 +113,8 @@ export default function InviteMember({ groupId, onMemberAdded }) {
         </div>
       )}
 
-      <div className="flex gap-3">
-        {isDemo ? (
+      {isDemo ? (
+        <div className="flex gap-3">
           <select
             data-demo-tour="invite-member-email"
             value={email}
@@ -116,25 +127,37 @@ export default function InviteMember({ groupId, onMemberAdded }) {
               <option key={person.email} value={person.email}>{person.name} — {person.role}</option>
             ))}
           </select>
-        ) : (
-          <input
-            data-demo-tour="invite-member-email"
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="member@email.com"
-            className="min-w-0 flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-          />
-        )}
-        <button
-          data-demo-tour="invite-member-submit"
-          onClick={handleInvite}
-          disabled={loading || !email.trim()}
-          className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
-        >
-          {loading ? 'Adding...' : 'Add Member'}
-        </button>
-      </div>
+          <button
+            data-demo-tour="invite-member-submit"
+            onClick={handleInvite}
+            disabled={loading || !email.trim()}
+            className="bg-violet-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
+          >
+            {loading ? 'Adding...' : 'Add Member'}
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label>
+            <span className="mb-1 block text-xs font-medium text-gray-600">Name</span>
+            <input value={name} onChange={event => setName(event.target.value)} placeholder="Performer name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-400" />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-gray-600">Email</span>
+            <input data-demo-tour="invite-member-email" type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="performer@example.com" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-400" />
+          </label>
+          <label>
+            <span className="mb-1 block text-xs font-medium text-gray-600">Role</span>
+            <select value={role} onChange={event => setRole(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-400">
+              <option value="singer">Singer</option>
+              <option value="musician">Musician</option>
+            </select>
+          </label>
+          <button data-demo-tour="invite-member-submit" onClick={handleInvite} disabled={loading || !name.trim() || !email.trim()} className="self-end rounded-lg bg-violet-600 px-5 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50">
+            {loading ? 'Sending…' : 'Send secure invite'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

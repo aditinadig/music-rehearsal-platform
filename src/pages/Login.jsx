@@ -1,14 +1,9 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import AuthShell from '../components/auth/AuthShell'
 import { supabase } from '../supabase/client'
 
-const terracotta = '#E35336'
-const peach = '#FFD3AC'
-const lavender = '#9988A1'
-const rust = '#8A2B0E'
-const ink = '#12100A'
-const muted = '#5F5550'
-const border = '#FFD3AC'
+const fieldClass = 'w-full rounded-xl border border-[#F0D7C8] bg-[#FFFDFC] px-4 py-3 text-sm text-[#12100A] outline-none transition placeholder:text-[#B1A39C] focus:border-[#E35336] focus:ring-4 focus:ring-[#E35336]/10'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -17,155 +12,43 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleLogin() {
+  async function handleLogin(event) {
+    event?.preventDefault()
+    if (!email.trim() || !password) return
     setError('')
     setLoading(true)
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
-    if (loginError) { setError(loginError.message); setLoading(false); return }
-    setLoading(false)
+    const { error: loginError } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    if (loginError) {
+      setError(loginError.message)
+      setLoading(false)
+      return
+    }
     navigate('/app')
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#fff', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-
-      {/* Left panel — branding */}
-      <div className="hidden lg:flex flex-col justify-between p-12 w-[44%] shrink-0" style={{ background: ink, color: '#fff' }}>
-        <div>
-          <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: '1.5rem', color: '#fff', letterSpacing: '-0.01em' }}>
-            Cue<span style={{ color: terracotta }}>.</span>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-            {['Assignments', 'Cues', 'Confirmations'].map((label, i) => (
-              <span key={label} style={{
-                border: '1px solid rgba(255,255,255,0.14)',
-                background: i === 0 ? 'rgba(227,83,54,0.18)' : 'rgba(255,255,255,0.06)',
-                color: i === 0 ? peach : lavender,
-                borderRadius: '999px',
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-              }}>{label}</span>
-            ))}
-          </div>
-        </div>
-        <div>
-          <blockquote style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: '1.75rem', lineHeight: 1.35, color: '#fff', marginBottom: '1.5rem' }}>
-            "We used to spend the first 15 minutes of every rehearsal sorting out who sings what. Not anymore."
-          </blockquote>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: terracotta, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
-              AK
-            </div>
-            <div>
-              <p style={{ fontSize: '0.875rem', fontWeight: 500, color: '#fff', margin: 0 }}>Anika K.</p>
-              <p style={{ fontSize: '0.78rem', color: lavender, margin: 0 }}>Choir director, Prism Ensemble</p>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'grid', gap: '0.65rem' }}>
-          {['Line-level assignments', 'Real-time updates', 'Stage mode'].map(f => (
-            <div key={f} style={{
-              display: 'flex', alignItems: 'center', gap: '0.6rem',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', padding: '0.65rem 0.8rem',
-            }}>
-              <span style={{ color: peach, fontWeight: 700, fontSize: '0.85rem' }}>✓</span>
-              <span style={{ fontSize: '0.78rem', color: lavender }}>{f}</span>
-            </div>
-          ))}
-        </div>
+    <AuthShell
+      title="Welcome back"
+      subtitle="Continue to your rehearsal workspace."
+      alternate={<>New to Cue? <Link to="/register" className="font-bold text-[#E35336] no-underline">Create an account</Link></>}
+    >
+      {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <form onSubmit={handleLogin} className="space-y-4">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-bold text-[#5F5550]">Email</span>
+          <input autoFocus required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" className={fieldClass} />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-bold text-[#5F5550]">Password</span>
+          <input required type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Enter your password" className={fieldClass} />
+        </label>
+        <button type="submit" disabled={loading || !email.trim() || !password} className="w-full rounded-xl bg-[#12100A] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-[#2B261B] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45">
+          {loading ? 'Logging in…' : 'Log in'}
+        </button>
+      </form>
+      <div className="mt-5 flex items-center justify-center gap-2 text-xs text-[#9988A1]">
+        <span className="h-px flex-1 bg-[#F0D7C8]" /><Link to="/" className="text-[#9988A1] no-underline hover:text-[#5F5550]">Back home</Link><span className="h-px flex-1 bg-[#F0D7C8]" />
       </div>
-
-      {/* Right panel — form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-[430px] rounded-3xl border p-6 shadow-sm" style={{ borderColor: border, background: 'linear-gradient(180deg, #fff 0%, #FFFCFA 100%)' }}>
-
-          {/* Mobile logo */}
-          <div className="lg:hidden mb-8" style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: '1.4rem', color: ink }}>
-            Cue<span style={{ color: terracotta }}>.</span>
-          </div>
-
-          <h1 className="mb-1" style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: '2rem', color: ink, letterSpacing: '-0.01em' }}>
-            Welcome back
-          </h1>
-          <p className="mb-7" style={{ fontSize: '0.9rem', color: muted }}>
-            Log in to your rehearsal space.
-          </p>
-
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            {[
-              ['Role', 'auto'],
-              ['Updates', 'live'],
-              ['Stage', 'ready'],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border bg-white px-3 py-2" style={{ borderColor: border }}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: lavender }}>{label}</p>
-                <p className="text-sm font-semibold mt-1" style={{ color: ink }}>{value}</p>
-              </div>
-            ))}
-          </div>
-
-          {error && (
-            <div className="rounded-xl px-4 py-3 mb-5 text-sm" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626' }}>
-              {error}
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: muted }}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="you@example.com"
-                className="w-full px-4 py-2.5 text-sm rounded-xl transition focus:outline-none"
-                style={{ border: `1.5px solid ${border}`, background: '#fff', color: ink }}
-                onFocus={e => e.target.style.borderColor = terracotta}
-                onBlur={e => e.target.style.borderColor = peach}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: muted }}>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="Your password"
-                className="w-full px-4 py-2.5 text-sm rounded-xl transition focus:outline-none"
-                style={{ border: `1.5px solid ${border}`, background: '#fff', color: ink }}
-                onFocus={e => e.target.style.borderColor = terracotta}
-                onBlur={e => e.target.style.borderColor = peach}
-              />
-            </div>
-
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50"
-              style={{ background: rust, boxShadow: '0 8px 24px rgba(138,43,14,0.18)', marginTop: '0.5rem' }}
-            >
-              {loading ? 'Logging in…' : 'Log in'}
-            </button>
-          </div>
-
-          <p className="text-sm text-center mt-6" style={{ color: muted }}>
-            Don't have an account?{' '}
-            <Link to="/register" style={{ color: terracotta, fontWeight: 500, textDecoration: 'none' }}>
-              Sign up free
-            </Link>
-          </p>
-
-          <p className="text-center mt-8">
-            <Link to="/" style={{ fontSize: '0.78rem', color: lavender, textDecoration: 'none' }}>
-              ← Back to home
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+    </AuthShell>
   )
 }

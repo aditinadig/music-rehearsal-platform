@@ -7,6 +7,7 @@ import Landing from './pages/Landing'
 
 const Login = lazy(() => import('./pages/Login'))
 const Register = lazy(() => import('./pages/Register'))
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
 const Demo = lazy(() => import('./pages/Demo'))
 const ManagerDashboard = lazy(() => import('./pages/ManagerDashboard'))
 const SingerDashboard = lazy(() => import('./pages/SingerDashboard'))
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route path="/demo" element={<Demo />} />
 
             {/* Role-based redirect after login */}
